@@ -1,0 +1,14 @@
+###################################
+ dashi - simple RPC over messaging
+###################################
+
+`Dashi` is a messaging library built on top of `Kombu`. It provides common
+patterns such as RPC without taking over your code or forcing a choice of
+async framework upon you.
+
+Parts of dashi are inspired by the `nova.rpc` package of `Openstack Nova`.
+
+
+.. _`Kombu`: http://ask.github.com/kombu
+.. _`nova.rpc`: https://github.com/openstack/nova/tree/master/nova/rpc
+.. _`Openstack Nova`: http://nova.openstack.org
