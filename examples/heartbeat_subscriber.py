@@ -7,7 +7,8 @@ import gevent
 import gevent.monkey
 gevent.monkey.patch_all()
 
-import dashi
+from dashi import DashiConnection
+
 
 class HeartbeatSubscriber(object):
 
@@ -15,7 +16,7 @@ class HeartbeatSubscriber(object):
         self.topic = "sub"+uuid.uuid4().hex
 
     def start(self):
-        self.dashi = dashi.Dashi(self.topic, "amqp://guest:guest@127.0.0.1//",
+        self.dashi = DashiConnection(self.topic, "amqp://guest:guest@127.0.0.1//",
                 "heartbeater")
         self.dashi.handle(self.heartbeat)
         consumer = gevent.spawn(self.dashi.consume)

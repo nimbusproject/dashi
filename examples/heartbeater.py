@@ -7,7 +7,7 @@ gevent.monkey.patch_all()
 import logging
 logging.basicConfig(level=logging.DEBUG)
 
-import dashi
+from dashi import DashiConnection
 
 class HeartbeatService(object):
 
@@ -18,7 +18,7 @@ class HeartbeatService(object):
         self.counter = count(0)
 
     def start(self):
-        self.dashi = dashi.Dashi(self.topic, "amqp://guest:guest@127.0.0.1//",
+        self.dashi = DashiConnection(self.topic, "amqp://guest:guest@127.0.0.1//",
                 "heartbeater")
 
         # support the "subscribe" operation with this method
