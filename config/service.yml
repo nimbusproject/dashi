@@ -1,0 +1,14 @@
+server:
+  amqp:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+    vhost: /
+    heartbeat: 30
+
+system:
+  # sysname - by default it is generated from your system's uname.
+  # uncomment and set here if you want to lock it to something.
+  #name: r2demo
+  name:

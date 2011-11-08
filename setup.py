@@ -22,7 +22,7 @@ setupdict = {
 
 from setuptools import setup, find_packages
 setupdict['packages'] = find_packages()
-setupdict['install_requires'] = ['kombu']
+setupdict['install_requires'] = ['kombu', 'pyyaml']
 setupdict['tests_require'] = ['nose']
 setupdict['test_suite'] = 'nose.collector'
 

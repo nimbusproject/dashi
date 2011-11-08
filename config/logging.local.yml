@@ -1,0 +1,21 @@
+# Section for defining logger log levels.  Loggers
+# are defined using dot notation.
+#
+# Examples:
+#   Enable DEBUG level for the pyon.datastore package
+#   and all classes subordinate to that package.
+#
+#   pyon.datastore:
+#     handlers: [console, file]
+#     level: DEBUG
+#
+#   Enable INFO level for the module
+#   pyon.datastore.couchchdb.couchdb_datastore
+#
+#   pyon.datastore.couchdb.couchdb_datastore:
+#     handlers: [console, file]
+#     level: INFO
+loggers:
+  TestService:
+    handlers: [console]
+    level: INFO
