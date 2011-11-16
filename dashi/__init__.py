@@ -69,7 +69,8 @@ class DashiConnection(object):
             headers = {'reply-to' : msg_id}
 
             with producers[self._conn].acquire(block=True) as producer:
-                producer.publish(d, routing_key=name, headers=headers)
+                producer.publish(d, routing_key=name, headers=headers,
+                                 exchange=self._exchange)
 
             with consumer:
                 # only expecting one event
@@ -92,8 +93,8 @@ class DashiConnection(object):
                     self._name, self._exchange)
         self._consumer.add_op(operation_name or operation.__name__, operation)
 
-    def consume(self):
-        self._consumer.consume()
+    def consume(self, timeout=None, count=None):
+        self._consumer.consume(timeout=timeout, count=count)
 
 
 class DashiConsumer(object):
@@ -119,9 +120,14 @@ class DashiConsumer(object):
                 callbacks=[self._callback])
         self._consumer.consume()
 
-    def consume(self):
-        while True:
-            self._conn.drain_events()
+    def consume(self, timeout=None, count=None):
+        if count:
+            for i in range(count):
+                self._conn.drain_events(timeout=timeout)
+        else:
+            while True:
+                self._conn.drain_events(timeout=timeout)
+
 
     def _callback(self, body, message):
         reply_to = None
