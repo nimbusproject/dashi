@@ -78,7 +78,7 @@ class DashiConnection(object):
 
             msg_body = messages[0]
             if msg_body.get('error'):
-                raise Exception(*msg_body['error'])
+                raise_error(msg_body['error'])
             else:
                 return msg_body.get('result')
 
@@ -146,7 +146,7 @@ class DashiConsumer(object):
 
             op_fun = self._ops.get(op)
             if not op_fun:
-                raise UnknownOperationError("Unknown operation: %s", op)
+                raise UnknownOperationError("Unknown operation: " + op)
 
             ret = op_fun(**args)
 
@@ -155,8 +155,23 @@ class DashiConsumer(object):
         finally:
             if reply_to:
                 if err:
-                    tb = traceback.format_exception(*err)
-                    err = (err[0].__name__, str(err[1]), tb)
+                    tb = "".join(traceback.format_exception(*err))
+
+                    # some error types are specific to dashi (not underlying
+                    # service code). These get raised with the same type on
+                    # the client side. Identify them by prefixing the package
+                    # name on the exc_type.
+
+                    exc_type = err[0]
+                    known_type = ERROR_TYPE_MAP.get(exc_type.__name__)
+                    if known_type and exc_type is known_type:
+                        exc_type_name = ERROR_PREFIX + exc_type.__name__
+                    else:
+                        exc_type_name = exc_type.__name__
+
+                    err = dict(exc_type=exc_type_name, value=str(err[1]),
+                               traceback=tb)
+
                 reply = dict(result=ret, error=err)
                 self._dashi.reply(reply_to, reply)
 
@@ -169,11 +184,47 @@ class DashiConsumer(object):
         self._ops[name] = fun
 
 
+def raise_error(error):
+    """Intakes a dict of remote error information and raises a DashiError
+    """
+    exc_type = error.get('exc_type')
+    if exc_type and exc_type.startswith(ERROR_PREFIX):
+        exc_type = exc_type[len(ERROR_PREFIX):]
+        exc_cls = ERROR_TYPE_MAP.get(exc_type, DashiError)
+    else:
+        exc_cls = DashiError
+
+    raise exc_cls(**error)
+
+
 class DashiError(Exception):
-    pass
+    def __init__(self, message=None, exc_type=None, value=None, traceback=None, **kwargs):
+        self.exc_type = exc_type
+        self.value = value
+        self.traceback = traceback
+
+        if message is None:
+            if exc_type:
+                if value:
+                    message = "%s: %s" % (exc_type, value)
+                else:
+                    message = exc_type
+            elif value:
+                message = value
+            else:
+                message = ""
+            if traceback:
+                message += "\n" + str(traceback)
+        super(DashiError, self).__init__(message)
+
 
 class BadRequestError(DashiError):
     pass
 
+
 class UnknownOperationError(DashiError):
     pass
+
+ERROR_PREFIX = "dashi."
+ERROR_TYPES = (BadRequestError, UnknownOperationError)
+ERROR_TYPE_MAP = dict((cls.__name__, cls) for cls in ERROR_TYPES)

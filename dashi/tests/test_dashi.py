@@ -103,3 +103,38 @@ class DashiConnectionTests(unittest.TestCase):
             self.assertEqual(ret, i)
             
         receiver.join_consumer_thread()
+
+    def test_call_unknown_op(self):
+        receiver = TestReceiver("r1", self.uri, "x1")
+        receiver.handle("test", True)
+        receiver.consume_n_in_thread(1)
+
+        conn = dashi.DashiConnection("s1", self.uri, "x1")
+
+        try:
+            conn.call("r1", "notarealop")
+        except dashi.UnknownOperationError:
+            pass
+        else:
+            self.fail("Expected UnknownOperationError")
+        finally:
+            receiver.join_consumer_thread()
+
+    def test_call_handler_error(self):
+        def raise_hell():
+            raise Exception("hell")
+
+        receiver = TestReceiver("r1", self.uri, "x1")
+        receiver.handle("raiser", raise_hell)
+        receiver.consume_n_in_thread(1)
+
+        conn = dashi.DashiConnection("s1", self.uri, "x1")
+
+        try:
+            conn.call("r1", "raiser")
+        except dashi.DashiError:
+            pass
+        else:
+            self.fail("Expected DashiError")
+        finally:
+            receiver.join_consumer_thread()
