@@ -4,8 +4,9 @@ import logging
 import logging.config
 
 from copy import copy
-
 from config import Config
+
+from dashi import DashiConnection
 
 DEFAULT_CONFIG_FILES = [
     'config/service.yml',
@@ -21,6 +22,8 @@ class Service(object):
 
     """
 
+    topic = "service"
+
     def __init__(self, config_files=DEFAULT_CONFIG_FILES,
                  logging_config_files=LOGGING_CONFIG_FILES, *args, **kwargs):
 
@@ -28,6 +31,16 @@ class Service(object):
         self.LOGGING_CFG = Config(logging_config_files).data
         
         self.CFG['cli_args'] = self._parse_argv()
+
+        self.amqp_uri = "amqp://%s:%s@%s/%s" % (
+                        self.CFG.server.amqp.username,
+                        self.CFG.server.amqp.password,
+                        self.CFG.server.amqp.host,
+                        self.CFG.server.amqp.vhost,
+                        )
+
+        self.dashi = DashiConnection(self.topic, self.amqp_uri, self.topic)
+
 
     def get_logger(self, name=None):
         """set up logging for a service using the py 2.7 dictConfig
