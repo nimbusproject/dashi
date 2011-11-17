@@ -21,13 +21,13 @@ class Service(object):
 
     """
 
-    def __init__(self, config_files=DEFAULT_CONFIG_FILES, logging_config_files=LOGGING_CONFIG_FILES):
+    def __init__(self, config_files=DEFAULT_CONFIG_FILES,
+                 logging_config_files=LOGGING_CONFIG_FILES, *args, **kwargs):
 
         self.CFG = Config(config_files).data
         self.LOGGING_CFG = Config(logging_config_files).data
         
         self.CFG['cli_args'] = self._parse_argv()
-
 
     def get_logger(self, name=None):
         """set up logging for a service using the py 2.7 dictConfig
@@ -36,22 +36,8 @@ class Service(object):
         if not name:
             name = self.__class__.__name__
 
-        logger = logging.getLogger(name)
+        return get_logger(name, self.LOGGING_CFG)
 
-        # Make log directory if it doesn't exist
-        for handler in self.LOGGING_CFG.get('handlers', {}).itervalues(): 
-            if 'filename' in handler: 
-                log_dir = os.path.dirname(handler['filename']) 
-                if not os.path.exists(log_dir): 
-                    os.makedirs(log_dir) 
-        try:
-            #TODO: This requires python 2.7
-            logging.config.dictConfig(self.LOGGING_CFG)
-        except AttributeError:
-            print >> sys.stderr, '"logging.config.dictConfig" doesn\'t seem to be supported in your python'
-            raise
-
-        return logger
 
 
     def _parse_argv(self, argv=copy(sys.argv)):
@@ -86,3 +72,26 @@ class Service(object):
                 argv = argv[1:]
 
         return cli_args
+
+
+def get_logger(name, CFG=None):
+    """set up logging for a service using the py 2.7 dictConfig
+    """
+
+    logger = logging.getLogger(name)
+
+    if CFG:
+        # Make log directory if it doesn't exist
+        for handler in CFG.get('handlers', {}).itervalues(): 
+            if 'filename' in handler: 
+                log_dir = os.path.dirname(handler['filename']) 
+                if not os.path.exists(log_dir): 
+                    os.makedirs(log_dir) 
+        try:
+            #TODO: This requires python 2.7
+            logging.config.dictConfig(CFG)
+        except AttributeError:
+            print >> sys.stderr, '"logging.config.dictConfig" doesn\'t seem to be supported in your python'
+            raise
+
+    return logger
