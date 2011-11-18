@@ -17,6 +17,8 @@ LOGGING_CONFIG_FILES = [
     'config/logging.local.yml',
     ]
 
+DEFAULT_EXCHANGE = "default_dashi_exchange"
+
 class Service(object):
     """Base class for services. Meant to be subclassed
 
@@ -38,8 +40,12 @@ class Service(object):
                         self.CFG.server.amqp.host,
                         self.CFG.server.amqp.vhost,
                         )
+        try:
+            self.dashi_exchange = self.CFG.dashi.exchange
+        except NameError:
+            self.dashi_exchange = DEFAULT_EXCHANGE
 
-        self.dashi = DashiConnection(self.topic, self.amqp_uri, self.topic)
+        self.dashi = DashiConnection(self.topic, self.amqp_uri, self.dashi_exchange)
 
 
     def get_logger(self, name=None):
