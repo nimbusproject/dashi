@@ -1,3 +1,10 @@
+try:
+    import gevent
+    import gevent.monkey
+except:
+    #gevent not available
+    pass
+
 import os
 import sys
 import logging
@@ -18,17 +25,16 @@ LOGGING_CONFIG_FILES = [
     ]
 
 DEFAULT_EXCHANGE = "default_dashi_exchange"
+DEFAULT_SERVICE_TOPIC = "dashiservice"
 
 class Service(object):
     """Base class for services. Meant to be subclassed
-
     """
 
-    topic = "service"
+    topic = DEFAULT_SERVICE_TOPIC
 
-    def __init__(self, config_files=DEFAULT_CONFIG_FILES,
-                 logging_config_files=LOGGING_CONFIG_FILES, *args, **kwargs):
-
+    def configure(self, config_files=DEFAULT_CONFIG_FILES,
+                  logging_config_files=LOGGING_CONFIG_FILES):
         self.CFG = Config(config_files).data
         self.LOGGING_CFG = Config(logging_config_files).data
         
@@ -42,9 +48,14 @@ class Service(object):
                         )
         try:
             self.dashi_exchange = self.CFG.dashi.exchange
-        except NameError:
+        except AttributeError:
             self.dashi_exchange = DEFAULT_EXCHANGE
 
+    def dashi_connect(self):
+
+        if self.log:
+            self.log.debug('Connecting to Dashi. Topic: "%s" Exchange: "%s"' %
+                           (self.topic, self.dashi_exchange))
         self.dashi = DashiConnection(self.topic, self.amqp_uri, self.dashi_exchange)
 
 
@@ -57,7 +68,50 @@ class Service(object):
 
         return get_logger(name, self.LOGGING_CFG)
 
+    def enable_gevent(self):
+        """enables gevent and swaps out standard threading for gevent
+        greenlet threading
 
+        throws an exception if gevent isn't available
+        """
+        gevent.monkey.patch_all()
+        self._start_methods = self._start_methods_gevent
+
+    def _start_methods(self, methods=[], join=True):
+        from threading import Thread
+
+        threads = []
+        for method in methods:
+            thread = Thread(target=method)
+            thread.daemon = True
+            threads.append(thread)
+            thread.start()
+        
+        if not join:
+            return
+
+        try:
+            while len(threads) > 0:
+                for t in threads:
+                    t.join(1)
+                    if not t.isAlive():
+                        threads.remove(t)
+                             
+        except KeyboardInterrupt:
+            self.log.info("%s killed" % self.__class__.__name__)
+
+    def _start_methods_gevent(self, methods=[], join=True):
+
+        greenlets = []
+        for method in methods:
+            glet = gevent.spawn(method)
+            greenlets.append(glet)
+
+        if join:
+            try:
+                gevent.joinall(greenlets)
+            except KeyboardInterrupt:
+                gevent.killall(greenlets)
 
     def _parse_argv(self, argv=copy(sys.argv)):
         """return argv as a parsed dictionary, looks like the following:
