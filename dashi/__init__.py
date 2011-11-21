@@ -14,12 +14,18 @@ log = dashi.util.get_logger()
 
 class DashiConnection(object):
 
-    def __init__(self, name, uri, exchange_name):
+    #TODO support connection info instead of uri
+
+    def __init__(self, name, uri, exchange, durable=False, auto_delete=True):
         self._conn = BrokerConnection(uri)
         self._name = name
-        self._exchange_name = exchange_name
-        self._exchange = Exchange(name=exchange_name, type='topic',
-                                  durable=False, auto_delete=True) # TODO parameterize
+        self._exchange_name = exchange
+        self._exchange = Exchange(name=exchange, type='topic',
+                                  durable=durable, auto_delete=auto_delete)
+
+        # visible attributes
+        self.durable = durable
+        self.auto_delete = auto_delete
 
         self._consumer_conn = None
         self._consumer = None
@@ -33,9 +39,23 @@ class DashiConnection(object):
             maybe_declare(self._exchange, producer.channel)
             producer.publish(d, routing_key=name, exchange=self._exchange_name)
 
-    def call(self, name, operation, **kwargs):
+    def call(self, name, operation, timeout=5, args=None, **kwargs):
         """Send a message and wait for reply
+
+        @param name: name of destination service queue
+        @param operation: name of service operation to invoke
+        @param timeout: RPC timeout to await a reply
+        @param args: dictionary of keyword args to pass to operation.
+                     Use this OR kwargs.
+        @param kwargs: additional args to pass to operation
         """
+
+        if args:
+            if kwargs:
+                raise TypeError("specify args dict or keyword arguments, not both")
+        else:
+            args = kwargs
+
 
         # create a direct exchange and queue for the reply. This may end up
         # being a bottleneck for performance: each rpc call gets a brand new
@@ -55,6 +75,7 @@ class DashiConnection(object):
                     routing_key=msg_id, exclusive=True, durable=False,
                     auto_delete=True)
             queue.declare()
+            log.debug("declared call() reply queue %s", msg_id)
 
             messages = []
 
@@ -65,16 +86,19 @@ class DashiConnection(object):
             consumer = Consumer(channel=channel, queues=[queue],
                 callbacks=[_callback])
 
-            d = dict(op=operation, args=kwargs)
+            d = dict(op=operation, args=args)
             headers = {'reply-to' : msg_id}
 
             with producers[self._conn].acquire(block=True) as producer:
+                maybe_declare(self._exchange, producer.channel)
+                log.debug("sending call to %s:%s", name, operation)
                 producer.publish(d, routing_key=name, headers=headers,
                                  exchange=self._exchange)
 
             with consumer:
+                log.debug("awaiting call reply on %s", msg_id)
                 # only expecting one event
-                conn.drain_events()
+                conn.drain_events(timeout=timeout)
 
             msg_body = messages[0]
             if msg_body.get('error'):
@@ -84,7 +108,11 @@ class DashiConnection(object):
 
     def reply(self, msg_id, body):
         with producers[self._conn].acquire(block=True) as producer:
-            producer.publish(body, routing_key=msg_id, exchange=msg_id)
+            try:
+                producer.publish(body, routing_key=msg_id, exchange=msg_id)
+            except self._conn.channel_errors:
+                log.exception("Failed to reply to msg %s", msg_id)
+
 
     def handle(self, operation, operation_name=None):
         if not self._consumer:
@@ -113,7 +141,9 @@ class DashiConsumer(object):
         self._channel = self._conn.channel()
 
         self._queue = Queue(channel=self._channel, name=self._name,
-                exchange=self._exchange, routing_key=self._name)
+                exchange=self._exchange, routing_key=self._name,
+                durable=self._dashi.durable,
+                auto_delete=self._dashi.auto_delete)
         self._queue.declare()
 
         self._consumer = Consumer(self._channel, [self._queue],
@@ -127,7 +157,6 @@ class DashiConsumer(object):
         else:
             while True:
                 self._conn.drain_events(timeout=timeout)
-
 
     def _callback(self, body, message):
         reply_to = None
