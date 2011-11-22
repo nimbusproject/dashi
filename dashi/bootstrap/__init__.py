@@ -88,7 +88,7 @@ class Service(object):
             thread.start()
         
         if not join:
-            return
+            return threads
 
         try:
             while len(threads) > 0:
@@ -110,8 +110,10 @@ class Service(object):
         if join:
             try:
                 gevent.joinall(greenlets)
-            except KeyboardInterrupt:
+            except KeyboardInterrupt, gevent.GreenletExit:
                 gevent.killall(greenlets)
+        else:
+            return greenlets
 
     def _parse_argv(self, argv=copy(sys.argv)):
         """return argv as a parsed dictionary, looks like the following:
