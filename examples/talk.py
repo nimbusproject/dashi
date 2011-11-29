@@ -61,7 +61,7 @@ class DashiTalker(Thread):
 
     def end(self):
         self.done = True
-        self.input_messagehel("%s has left the room" % (self.name))
+        self.input_message("%s has left the room" % (self.name))
 
 
 def main(argv):
