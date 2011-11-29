@@ -28,17 +28,12 @@ class DashiTalker(Thread):
         self.subscribers = []
         self.console = console
         self.dashi.handle(self.new_joined_chat, "new_joined_chat")
-        self.dashi.handle(self.join_back, "join_back")
         self.dashi.handle(self.incoming_message, "incoming_message")
 
     def new_joined_chat(self, subscriber):
         self.subscribers.append(subscriber)
         self.console.write("%s has entered the room" % (subscriber))
-        self.dashi.fire(subscriber, "join_back", subscriber=self.name)
-
-    def join_back(self, subscriber):
-        self.subscribers.append(subscriber)
-        self.console.write("You have contact with %s" % (subscriber))
+        return True
 
     def input_message(self, msg, sender_name=None):
         if sender_name:
@@ -47,7 +42,10 @@ class DashiTalker(Thread):
             self.dashi.fire(subscriber, "incoming_message", message=msg)
 
     def request_conversation(self, with_who):
-        self.dashi.call(with_who, "new_joined_chat", subscriber=self.name)
+        rc = self.dashi.call(with_who, "new_joined_chat", subscriber=self.name)
+        if rc:
+            self.subscribers.append(with_who)
+            self.console.write("You have contact with %s" % (with_who))
 
     def incoming_message(self, message):
         self.console.write(message)
@@ -62,7 +60,6 @@ class DashiTalker(Thread):
     def end(self):
         self.done = True
         self.input_message("%s has left the room" % (self.name))
-
 
 def main(argv):
     my_name = argv[0]
@@ -81,7 +78,6 @@ def main(argv):
         else:
             talker.input_message(line)
 
-        
 if __name__ == '__main__':
     rc = main(sys.argv[1:])
     sys.exit(rc)
