@@ -1,3 +1,4 @@
+import socket
 import traceback
 import uuid
 import sys
@@ -13,6 +14,8 @@ import dashi.util
 log = dashi.util.get_logger()
 
 class DashiConnection(object):
+
+    consumer_timeout = 1.0
 
     #TODO support connection info instead of uri
 
@@ -113,7 +116,6 @@ class DashiConnection(object):
             except self._conn.channel_errors:
                 log.exception("Failed to reply to msg %s", msg_id)
 
-
     def handle(self, operation, operation_name=None):
         if not self._consumer:
             self._consumer_conn = connections[self._conn].acquire()
@@ -121,8 +123,11 @@ class DashiConnection(object):
                     self._name, self._exchange)
         self._consumer.add_op(operation_name or operation.__name__, operation)
 
-    def consume(self, timeout=None, count=None):
-        self._consumer.consume(timeout=timeout, count=count)
+    def consume(self, count=None, timeout=None):
+        self._consumer.consume(count, timeout)
+
+    def cancel(self):
+        self._consumer.cancel()
 
 
 class DashiConsumer(object):
@@ -134,6 +139,7 @@ class DashiConsumer(object):
 
         self._channel = None
         self._ops = {}
+        self._cancelled = False
 
         self.connect()
 
@@ -150,13 +156,47 @@ class DashiConsumer(object):
                 callbacks=[self._callback])
         self._consumer.consume()
 
-    def consume(self, timeout=None, count=None):
+    def consume(self, count=None, timeout=None):
         if count:
-            for i in range(count):
-                self._conn.drain_events(timeout=timeout)
+            i = 0
+            while i < count and not self._cancelled:
+                self._consume_one(timeout)
+                i += 1
         else:
-            while True:
-                self._conn.drain_events(timeout=timeout)
+            while not self._cancelled:
+                self._consume_one(timeout)
+        self._cancelled = False
+
+    def _consume_one(self, timeout=None):
+
+        # do consuming in a busy-ish loop, checking for cancel. There doesn't
+        # seem to be an easy way to interrupt drain_events other than the
+        # timeout. This could probably be added to kombu if needed. In
+        # practice cancellation is likely infrequent (except in tests) so this
+        # should hold for now. Can use a long timeout for production and a
+        # short one for tests.
+
+        inner_timeout = self._dashi.consumer_timeout
+        elapsed = 0
+
+        # keep trying until a single event is drained or timeout hit
+        while not self._cancelled:
+            try:
+                self._conn.drain_events(timeout=inner_timeout)
+                break
+
+            except socket.timeout:
+                if timeout:
+                    elapsed += inner_timeout
+                    if elapsed >= timeout:
+                        raise
+
+                    if elapsed + inner_timeout > timeout:
+                        inner_timeout = timeout - elapsed
+
+
+    def cancel(self):
+        self._cancelled = True
 
     def _callback(self, body, message):
         reply_to = None

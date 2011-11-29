@@ -3,6 +3,7 @@ import threading
 from functools import partial
 import itertools
 import uuid
+import time
 
 import dashi
 
@@ -15,6 +16,9 @@ log = dashi.util.get_logger()
 _NO_REPLY = object()
 
 class TestReceiver(object):
+
+    consume_timeout = 5
+
     def __init__(self, **kwargs):
 
         if 'name' in kwargs:
@@ -24,6 +28,7 @@ class TestReceiver(object):
         kwargs['name'] = self.name
 
         self.conn = dashi.DashiConnection(**kwargs)
+        self.conn.consumer_timeout = 0.01
         self.received = []
         self.reply_with = {}
 
@@ -42,23 +47,28 @@ class TestReceiver(object):
                 return reply_with()
             return reply_with
 
-    def consume_n(self, count):
-        self.conn.consume(count=count, timeout=5)
+    def consume(self, count):
+        self.conn.consume(count=count, timeout=self.consume_timeout)
 
-    def consume_n_in_thread(self, count):
+    def consume_in_thread(self, count=None):
         assert self.consumer_thread is None
-        t = threading.Thread(target=self.consume_n, args=(count,))
+        t = threading.Thread(target=self.consume, args=(count,))
         t.daemon = True
         self.consumer_thread = t
         t.start()
 
-    def join_consumer_thread(self):
+    def join_consumer_thread(self, cancel=False):
         if self.consumer_thread:
+            if cancel:
+                self.conn.cancel()
             self.consumer_thread.join()
             self.consumer_thread = None
 
     def clear(self):
         self.received[:] = []
+
+    def cancel(self):
+        self.conn.cancel()
 
 
 class DashiConnectionTests(unittest.TestCase):
@@ -74,7 +84,7 @@ class DashiConnectionTests(unittest.TestCase):
         args1 = dict(a=1, b="sandwich")
         conn.fire(receiver.name, "test", **args1)
 
-        receiver.consume_n(1)
+        receiver.consume(1)
 
         self.assertEqual(len(receiver.received), 1)
         opname, gotargs = receiver.received[0]
@@ -88,7 +98,7 @@ class DashiConnectionTests(unittest.TestCase):
         conn.fire(receiver.name, "test2", **args3)
 
         receiver.clear()
-        receiver.consume_n(2)
+        receiver.consume(2)
 
         self.assertEqual(len(receiver.received), 2)
         opname, gotargs = receiver.received[0]
@@ -102,7 +112,7 @@ class DashiConnectionTests(unittest.TestCase):
         receiver = TestReceiver(uri=self.uri, exchange="x1")
         replies = [5,4,3,2,1]
         receiver.handle("test", replies.pop)
-        receiver.consume_n_in_thread(1)
+        receiver.consume_in_thread(1)
 
         conn = dashi.DashiConnection("s1", self.uri, "x1")
         args1 = dict(a=1, b="sandwich")
@@ -111,7 +121,7 @@ class DashiConnectionTests(unittest.TestCase):
         self.assertEqual(ret, 1)
         receiver.join_consumer_thread()
 
-        receiver.consume_n_in_thread(4)
+        receiver.consume_in_thread(4)
 
         for i in list(reversed(replies)):
             ret = conn.call(receiver.name, "test", **args1)
@@ -122,7 +132,7 @@ class DashiConnectionTests(unittest.TestCase):
     def test_call_unknown_op(self):
         receiver = TestReceiver(uri=self.uri, exchange="x1")
         receiver.handle("test", True)
-        receiver.consume_n_in_thread(1)
+        receiver.consume_in_thread(1)
 
         conn = dashi.DashiConnection("s1", self.uri, "x1")
 
@@ -141,7 +151,7 @@ class DashiConnectionTests(unittest.TestCase):
 
         receiver = TestReceiver(uri=self.uri, exchange="x1")
         receiver.handle("raiser", raise_hell)
-        receiver.consume_n_in_thread(1)
+        receiver.consume_in_thread(1)
 
         conn = dashi.DashiConnection("s1", self.uri, "x1")
 
@@ -160,37 +170,37 @@ class DashiConnectionTests(unittest.TestCase):
         receivers = []
         receiver_name = None
 
-        for i in range(10):
+        for i in range(3):
             receiver = TestReceiver(uri=self.uri, exchange="x1", **extras)
             if not receiver_name:
                 receiver_name = receiver.name
                 extras['name'] = receiver.name
             receiver.handle("test")
-            receiver.consume_n_in_thread(5)
-
             receivers.append(receiver)
 
         conn = dashi.DashiConnection("s1", self.uri, "x1")
-        for i in range(50):
+        for i in range(10):
             conn.fire(receiver_name, "test", n=i)
 
-        map = list(itertools.repeat(None, 50))
-        for index, receiver in enumerate(receivers):
-            receiver.join_consumer_thread()
+        # walk the receivers and have each one consume a single message
+        receiver_cycle = itertools.cycle(receivers)
+        for i in range(10):
+            receiver = next(receiver_cycle)
+            receiver.consume(1)
+            opname, args = receiver.received[-1]
+            self.assertEqual(opname, "test")
+            self.assertEqual(args['n'], i)
 
-            # each receiver should have gotten 5 messages, but they won't all
-            # be consecutive
+    def test_cancel(self):
 
-            self.assertEqual(len(receiver.received), 5)
-            for opname,args in receiver.received:
-                n = args['n']
-                self.assertEqual(map[n], None)
-                map[n] = index
+        receiver = TestReceiver(uri=self.uri, exchange="x1")
+        receiver.handle("nothing", 1)
+        receiver.consume_in_thread(1)
 
-        for msg_index, receiver_index in enumerate(map):
-            self.assertIsNotNone(receiver_index)
+        receiver.cancel()
 
-        self.assertNotEquals(map, sorted(map))
+        # this should hang forever if cancel doesn't work
+        receiver.join_consumer_thread()
 
 
 class RabbitDashiConnectionTests(DashiConnectionTests):
