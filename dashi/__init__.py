@@ -2,6 +2,7 @@ import socket
 import traceback
 import uuid
 import sys
+import logging
 
 from kombu.connection import BrokerConnection
 from kombu.messaging import Consumer
@@ -9,9 +10,7 @@ from kombu.pools import connections, producers
 from kombu.entity import Queue, Exchange
 from kombu.common import maybe_declare
 
-import dashi.util
-
-log = dashi.util.get_logger()
+log = logging.getLogger(__name__)
 
 class DashiConnection(object):
 
@@ -217,7 +216,11 @@ class DashiConsumer(object):
             if not op_fun:
                 raise UnknownOperationError("Unknown operation: " + op)
 
-            ret = op_fun(**args)
+            try:
+                ret = op_fun(**args)
+            except Exception:
+                log.exception("Error in handler for %s:%s", self._name, op)
+                raise
 
         except Exception:
             err = sys.exc_info()
