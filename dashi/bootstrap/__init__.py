@@ -11,17 +11,16 @@ import logging
 import logging.config
 
 from copy import copy
-from config import Config
 
 from dashi import DashiConnection
+from config import Config
+from containers import dict_merge, DotDict
 
 DEFAULT_CONFIG_FILES = [
     'config/service.yml',
-    'config/service.local.yml',
     ]
 LOGGING_CONFIG_FILES = [
     'config/logging.yml',
-    'config/logging.local.yml',
     ]
 
 DEFAULT_EXCHANGE = "default_dashi_exchange"
@@ -31,10 +30,15 @@ topic = DEFAULT_SERVICE_TOPIC
 
 def configure(config_files=DEFAULT_CONFIG_FILES,
               logging_config_files=LOGGING_CONFIG_FILES):
+
+    cli_cfg, cli_cfg_files = _parse_argv()
+
+    config_files = config_files + cli_cfg_files
+
     CFG = Config(config_files).data
-    LOGGING_CFG = Config(logging_config_files).data
-    
-    CFG['cli_args'] = _parse_argv()
+    #LOGGING_CFG = Config(logging_config_files).data #TODO logging setup
+
+    CFG = dict_merge(CFG, cli_cfg)
 
     return CFG
 
@@ -117,28 +121,66 @@ def _parse_argv(argv=copy(sys.argv)):
     {'option1': 'likethis', 'option2': 'likethat', 'flag': True}
     """
 
-    cli_args = {}
+    cfg = DotDict()
+    cfg_files = []
+
+    argv = argv[1:] # Skip command name
     while argv:
-        arg = argv[0]
+        arg = argv.pop(0)
+
+        # split up arg in format --arg=val
+        key_val = arg.split("=")
+        arg = key_val[0]
         try:
-            maybe_val = argv[1]
+            # try to get val from format --arg=val
+            val = key_val[1]
         except IndexError:
-            maybe_val = None
+            try:
+                # try to get val from format --arg val
+                val = argv.pop(0)
+            except IndexError:
+                # No val available, probably a flag
+                val = None
 
         if arg[0] == '-':
             key = arg.lstrip('-')
-            if not maybe_val or maybe_val[0] == '-':
+            if not val:
                 val = True
-                argv = argv[1:]
-            else:
-                val = maybe_val
-                argv = argv[2:]
-            cli_args[key] = val
+            if val[0] == '-':
+                # reinsert popped value
+                argv.insert(0, val)
+            new_cfg = _dict_from_dotted(key, val)
+            cfg = dict_merge(cfg, new_cfg)
         else:
-            #skip arguments that aren't preceded with -
-            argv = argv[1:]
+            if arg.endswith(".yml"):
+                cfg_files.append(arg)
 
-    return cli_args
+    return cfg, cfg_files
+
+def _dict_from_dotted(key, val):
+    """takes a key value pair like:
+    key: "this.is.a.key"
+    val: "the value"
+
+    and returns a dictionary like:
+
+    {"this":
+        {"is":
+            {"a":
+                {"key":
+                    "the value"
+                }
+            }
+        }
+    }
+    """
+    split_key = key.split(".")
+    split_key.reverse()
+    for key_part in split_key:
+        new_dict = DotDict()
+        new_dict[key_part] = val
+        val = new_dict
+    return val
 
 
 def get_logger(name, CFG=None):
