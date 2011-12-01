@@ -6,6 +6,7 @@ except:
     pass
 
 import os
+import re
 import sys
 import logging
 import logging.config
@@ -129,26 +130,18 @@ def _parse_argv(argv=copy(sys.argv)):
         arg = argv.pop(0)
 
         # split up arg in format --arg=val
-        key_val = arg.split("=")
+        key_val = re.split('=| ', arg)
         arg = key_val[0]
         try:
-            # try to get val from format --arg=val
             val = key_val[1]
         except IndexError:
-            try:
-                # try to get val from format --arg val
-                val = argv.pop(0)
-            except IndexError:
-                # No val available, probably a flag
-                val = None
-
+            # No val available, probably a flag
+            val = None
+        
         if arg[0] == '-':
             key = arg.lstrip('-')
             if not val:
                 val = True
-            if val[0] == '-':
-                # reinsert popped value
-                argv.insert(0, val)
             new_cfg = _dict_from_dotted(key, val)
             cfg = dict_merge(cfg, new_cfg)
         else:
