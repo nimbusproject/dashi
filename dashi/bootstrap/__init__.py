@@ -30,9 +30,10 @@ DEFAULT_SERVICE_TOPIC = "dashiservice"
 topic = DEFAULT_SERVICE_TOPIC
 
 def configure(config_files=DEFAULT_CONFIG_FILES,
-              logging_config_files=LOGGING_CONFIG_FILES):
+              logging_config_files=LOGGING_CONFIG_FILES,
+              argv=sys.argv):
 
-    cli_cfg, cli_cfg_files = _parse_argv()
+    cli_cfg, cli_cfg_files = _parse_argv(argv)
 
     config_files = config_files + cli_cfg_files
 
