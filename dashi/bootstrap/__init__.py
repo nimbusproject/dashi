@@ -52,7 +52,10 @@ def dashi_connect(topic, CFG=None, amqp_uri=None):
         raise Exception("Must provide either a config object or an amqp_uri")
 
     if not amqp_uri:
-        amqp_uri = "amqp://%s:%s@%s/%s" % (
+        if 'memory' in CFG.server:
+            amqp_uri = "memory://%s" % (CFG.server.memory.name)
+        else:
+            amqp_uri = "amqp://%s:%s@%s/%s" % (
                         CFG.server.amqp.username,
                         CFG.server.amqp.password,
                         CFG.server.amqp.host,
