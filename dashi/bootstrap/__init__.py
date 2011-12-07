@@ -139,8 +139,11 @@ def _parse_argv(argv=copy(sys.argv)):
         try:
             val = key_val[1]
         except IndexError:
-            # No val available, probably a flag
-            val = None
+            if len(argv) > 0 and argv[0][0] != '-':
+                val = argv.pop(0)
+            else:
+                # No val available, probably a flag
+                val = None
         
         if arg[0] == '-':
             key = arg.lstrip('-')
