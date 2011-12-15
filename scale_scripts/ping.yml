@@ -19,4 +19,4 @@ test:
   ponger_name: pong
   consume_timeout: 5
   consume_count: 1
-  runtime: 600
+  runtime: 150
