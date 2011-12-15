@@ -2,7 +2,10 @@
 
 pinger_host=$1
 ponger_host=$2
-amqp_host=$2
+amqp_host=$3
+
+exchange=`uuidgen`
+
 out_dir="pingpong".`date +%s`
 mkdir $out_dir
 out_file=$out_dir/pingpong.data
@@ -19,7 +22,7 @@ scp $l_conf_file $ponger_host:$r_conf_file
 scp $l_pgm_file $pinger_host:$r_pgm_file
 scp $l_pgm_file $ponger_host:$r_pgm_file
 
-trials=10
+trials=1
 
 touch $out_file
 date >> $out_file
@@ -35,7 +38,7 @@ do
     ssh $pinger_host top -b -d 1 > $cpu_file&
     kill_pid2=$!
 
-    cmd_line_args="--server.amqp.host=$amqp_host"
+    cmd_line_args="--server.amqp.host=$amqp_host --dashi.exchange=$exchange"
 
     ssh $ponger_host $py $r_pgm_file --test.type=pong $cmd_line_args $r_conf_file &
     recv_pid=$!
@@ -43,10 +46,11 @@ do
     ssh $pinger_host $py $r_pgm_file --test.type=ping $cmd_line_args $r_conf_file >> $out_file
 
     echo "pinger finished, waiting for ponger"
-    echo "ponger finished"
     wait $recv_pid
+    echo "ponger finished"
     kill $kill_pid1
     kill $kill_pid2
+    echo "kill sent, wiating"
     wait
     sleep 2
 

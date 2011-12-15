@@ -2,6 +2,8 @@
 
 sender_host=$1
 receiver_host=$2
+amqp_host=$3
+
 out_dir="thoughput".`date +%s`
 mkdir $out_dir
 out_file=$out_dir/throughput.size.data
@@ -42,7 +44,7 @@ do
             ssh $sender_host top -b -d 1 > $cpu_file&
             kill_pid2=$!
 
-            cmd_line_args="--test.message.entry_size=$sz --test.message.entry_count=$cnt"
+            cmd_line_args="--test.message.entry_size=$sz --test.message.entry_count=$cnt --server.amqp.host=$amqp_host"
 
             ssh $receiver_host $py $r_pgm_file --test.type=R $cmd_line_args $r_conf_file >> $out_file &
             recv_pid=$!

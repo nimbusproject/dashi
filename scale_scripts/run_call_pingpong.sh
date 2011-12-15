@@ -2,7 +2,7 @@
 
 pinger_host=$1
 ponger_host=$2
-amqp_host=$2
+amqp_host=$3
 out_dir="LONG_TESTcallpingpong".`date +%s`
 mkdir $out_dir
 out_file=$out_dir/callpingpong.data

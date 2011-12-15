@@ -6,16 +6,6 @@ from dashi import bootstrap
 import datetime
 import simplejson as json
 
-def build_message(ent_count, ent_size):
-    ent = ""
-    for i in range(0, ent_size):
-        ent = ent + "X"
-    d= {}
-    for i in range(0, ent_count):
-        d[i] = ent
-    return d
-
-
 class DashiScalePonger(object):
 
     def __init__(self, CFG):
@@ -29,6 +19,7 @@ class DashiScalePonger(object):
         self.dashi.fire(self.CFG.test.pinger_name, "pong")
 
     def final_msg(self):
+        print "received final message"
         self.done = True
         sys.exit(0)
 
@@ -62,6 +53,7 @@ class DashiScalePinger(object):
                 self.dashi.consume(timeout=int(self.CFG.test.consume_timeout), count=int(self.CFG.test.consume_count))
             except socket.timeout, ex:
                 pass
+        print "sending final message"
         self.dashi.fire(self.CFG.test.ponger_name, "final_msg")
 
     def timeout(self):

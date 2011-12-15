@@ -1,6 +1,5 @@
 server:
   amqp:
-    host: 149.165.148.155
     port: 5672
     username: guest
     password: guest

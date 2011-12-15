@@ -1,6 +1,5 @@
 server:
   amqp:
-    host: localhost
     port: 5672
     username: guest
     password: guest
@@ -18,6 +17,6 @@ test:
   name: ping
   pinger_name: ping
   ponger_name: pong
-  consume_timeout: 7
+  consume_timeout: 5
   consume_count: 1
-  runtime: 28800
+  runtime: 600

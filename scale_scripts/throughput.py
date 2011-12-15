@@ -7,12 +7,12 @@ import datetime
 import simplejson as json
 
 def build_message(ent_count, ent_size):
-    ent = ""
+    ent = []
     for i in range(0, ent_size):
-        ent = ent + "X"
+        ent.append(1)
     d= {}
     for i in range(0, ent_count):
-        d[i] = ent
+        d[i] = ent[:]
     return d
 
 
