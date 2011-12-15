@@ -43,7 +43,7 @@ do
     ssh $ponger_host $py $r_pgm_file --test.type=pong $cmd_line_args $r_conf_file &
     recv_pid=$!
     sleep 2
-    ssh $pinger_host $py $r_pgm_file --test.type=ping $cmd_line_args $r_conf_file >> $out_file
+    ssh $pinger_host $py $r_pgm_file --test.type=ping $cmd_line_args $r_conf_file | tee $out_file
 
     echo "pinger finished, waiting for ponger"
     wait $recv_pid
