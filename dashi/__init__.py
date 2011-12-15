@@ -72,11 +72,8 @@ class DashiConnection(object):
 
         # check out a connection from the pool
         with connections[self._conn].acquire(block=True) as conn:
-            channel = conn.channel()
-            queue = Queue(channel=channel, name=msg_id, exchange=exchange,
-                    routing_key=msg_id, exclusive=True, durable=False,
-                    auto_delete=True)
-            queue.declare()
+            queue = Queue(name=msg_id, exchange=exchange, routing_key=msg_id,
+                          exclusive=True, durable=False, auto_delete=True)
             log.debug("declared call() reply queue %s", msg_id)
 
             messages = []
@@ -85,8 +82,8 @@ class DashiConnection(object):
                 messages.append(body)
                 message.ack()
 
-            consumer = Consumer(channel=channel, queues=[queue],
-                callbacks=[_callback])
+            consumer = Consumer(conn, queues=(queue,), callbacks=(_callback,))
+            consumer.declare()
 
             d = dict(op=operation, args=args)
             headers = {'reply-to' : msg_id}
