@@ -1,0 +1,41 @@
+
+Tests
+=====
+
+ping pong fire
+-- send a message from A to B with fire
+-- send the message back from B to A with fire
+-- repeat the above N times
+
+ping pong call
+-- send a message from A to B with call
+-- B responds to A
+-- repeat the above N times
+
+many to 1
+-- create A sends to N servers
+-- all N servers respond to A
+-- repeat
+
+ring
+-- form a ring of receivers
+-- seng the message around the ring
+
+receive test
+-- server b sends messages to server A
+-- server A runs for N seconds and counts the number it receivers
+
+send test
+-- the oppositte of receive test
+
+
+Variables
+=========
+
+1 entry message size
+1 character entry size many messages
+number of times to repeat
+bNumber of receivers for manyto1 and ring
+
+
+

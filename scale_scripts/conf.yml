@@ -1,0 +1,26 @@
+server:
+  amqp:
+    host: 149.165.148.155
+    port: 5672
+    username: guest
+    password: guest
+    vhost: /
+
+dashi:
+    exchange: eeagentEX
+
+loggers:
+  eeagent:
+    handlers: [console]
+    level: WARN
+
+test:
+  name: throughput
+  receiver_name: receive
+  sender_name: send
+  consume_timeout: 7
+  consume_count: 1
+  runtime: 15
+  message:
+    entry_size:  1
+    entry_count: 1

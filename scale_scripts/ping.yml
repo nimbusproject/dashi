@@ -1,0 +1,23 @@
+server:
+  amqp:
+    host: localhost
+    port: 5672
+    username: guest
+    password: guest
+    vhost: /
+
+dashi:
+    exchange: eeagentEX
+
+loggers:
+  eeagent:
+    handlers: [console]
+    level: WARN
+
+test:
+  name: ping
+  pinger_name: ping
+  ponger_name: pong
+  consume_timeout: 7
+  consume_count: 1
+  runtime: 28800
