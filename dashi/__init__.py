@@ -18,7 +18,7 @@ class DashiConnection(object):
 
     #TODO support connection info instead of uri
 
-    def __init__(self, name, uri, exchange, durable=False, auto_delete=True):
+    def __init__(self, name, uri, exchange, durable=False, auto_delete=True, serializer=None):
         self._conn = BrokerConnection(uri)
         self._name = name
         self._exchange_name = exchange
@@ -31,6 +31,8 @@ class DashiConnection(object):
 
         self._consumer_conn = None
         self._consumer = None
+
+        self._serializer = serializer
 
     def fire(self, name, operation, **kwargs):
         """Send a message without waiting for a reply
@@ -92,7 +94,7 @@ class DashiConnection(object):
                 maybe_declare(self._exchange, producer.channel)
                 log.debug("sending call to %s:%s", name, operation)
                 producer.publish(d, routing_key=name, headers=headers,
-                                 exchange=self._exchange)
+                                 exchange=self._exchange, serializer=self._serializer)
 
             with consumer:
                 log.debug("awaiting call reply on %s", msg_id)
@@ -108,7 +110,7 @@ class DashiConnection(object):
     def reply(self, msg_id, body):
         with producers[self._conn].acquire(block=True) as producer:
             try:
-                producer.publish(body, routing_key=msg_id, exchange=msg_id)
+                producer.publish(body, routing_key=msg_id, exchange=msg_id, serializer=self._serializer)
             except self._conn.channel_errors:
                 log.exception("Failed to reply to msg %s", msg_id)
 

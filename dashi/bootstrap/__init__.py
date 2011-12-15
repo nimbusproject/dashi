@@ -66,7 +66,12 @@ def dashi_connect(topic, CFG=None, amqp_uri=None):
     except AttributeError:
         dashi_exchange = DEFAULT_EXCHANGE
 
-    return DashiConnection(topic, amqp_uri, dashi_exchange)
+    try:
+        serializer = CFG.dashi.serializer
+    except AttributeError:
+        serializer = None
+
+    return DashiConnection(topic, amqp_uri, dashi_exchange, serializer=serializer)
 
 
 def enable_gevent():
