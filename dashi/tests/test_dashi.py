@@ -3,12 +3,11 @@ import threading
 from functools import partial
 import itertools
 import uuid
-import time
+
+from kombu.pools import connections
 
 import dashi
-
 import dashi.util
-
 from dashi.tests.util import who_is_calling
 
 log = dashi.util.get_logger()
@@ -204,4 +203,34 @@ class DashiConnectionTests(unittest.TestCase):
 
 
 class RabbitDashiConnectionTests(DashiConnectionTests):
+    """The base dashi tests run on rabbit, plus some extras which are
+    rabbit specific
+    """
     uri = "amqp://guest:guest@127.0.0.1//"
+
+    def test_call_channel_free(self):
+
+        # hackily ensure that call() releases its channel
+
+        receiver = TestReceiver(uri=self.uri, exchange="x1")
+        receiver.handle("test", "myreply")
+        receiver.consume_in_thread(1)
+
+        conn = dashi.DashiConnection("s1", self.uri, "x1")
+
+        # peek into connection to grab a channel and note its id
+        with connections[conn._conn].acquire(block=True) as kombuconn:
+            with kombuconn.channel() as channel:
+                channel_id = channel.channel_id
+                log.debug("got channel ID %s", channel.channel_id)
+
+        ret = conn.call(receiver.name, "test")
+        self.assertEqual(ret, "myreply")
+        receiver.join_consumer_thread()
+
+        # peek into connection to grab a channel and note its id
+        with connections[conn._conn].acquire(block=True) as kombuconn:
+            with kombuconn.channel() as channel:
+                log.debug("got channel ID %s", channel.channel_id)
+                self.assertEqual(channel_id, channel.channel_id)
+
