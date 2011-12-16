@@ -34,6 +34,10 @@ class DashiConnection(object):
 
         self._serializer = serializer
 
+    @property
+    def name(self):
+        return self._name
+
     def fire(self, name, operation, **kwargs):
         """Send a message without waiting for a reply
         """
