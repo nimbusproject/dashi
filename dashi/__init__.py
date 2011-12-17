@@ -39,10 +39,17 @@ class DashiConnection(object):
     def name(self):
         return self._name
 
-    def fire(self, name, operation, **kwargs):
+    def fire(self, name, operation, args=None, **kwargs):
         """Send a message without waiting for a reply
         """
-        d = dict(op=operation, args=kwargs)
+
+        if args:
+            if kwargs:
+                raise TypeError("specify args dict or keyword arguments, not both")
+        else:
+            args = kwargs
+
+        d = dict(op=operation, args=args)
 
         with producers[self._conn].acquire(block=True) as producer:
             maybe_declare(self._exchange, producer.channel)
