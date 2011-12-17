@@ -238,6 +238,9 @@ class DashiConsumer(object):
 
             try:
                 ret = op_fun(**args)
+            except TypeError, e:
+                log.exception("Type error with handler for %s:%s", self._name, op)
+                raise BadRequestError("Type error: %s" % str(e))
             except Exception:
                 log.exception("Error in handler for %s:%s", self._name, op)
                 raise
