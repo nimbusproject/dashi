@@ -140,6 +140,10 @@ class DashiConnection(object):
         if self._consumer:
             self._consumer.cancel(block=block)
 
+    def disconnect(self):
+        if self._consumer:
+            self._consumer.disconnect()
+
 
 class DashiConsumer(object):
     def __init__(self, dashi, connection, name, exchange):
@@ -167,6 +171,9 @@ class DashiConsumer(object):
         self._consumer = Consumer(self._channel, [self._queue],
                 callbacks=[self._callback])
         self._consumer.consume()
+
+    def disconnect(self):
+        self._consumer.cancel()
 
     def consume(self, count=None, timeout=None):
 
