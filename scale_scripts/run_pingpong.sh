@@ -46,7 +46,7 @@ do
     ssh $pinger_host $py $r_pgm_file --test.type=ping $cmd_line_args $r_conf_file | tee $out_file
 
     echo "pinger finished, waiting for ponger"
-    wait $recv_pid
+    kill $recv_pid
     echo "ponger finished"
     kill $kill_pid1
     kill $kill_pid2

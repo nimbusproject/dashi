@@ -47,9 +47,10 @@ class DashiScalePinger(object):
         self.timer.start()
         self.start_time = datetime.datetime.now()
         print "sending first ping"
+        self.dashi.fire(self.CFG.test.ponger_name, "ping")
         while not self.done:
             try:
-                self.dashi.fire(self.CFG.test.ponger_name, "ping")
+                self.dashi.consume(count=1, timeout=2)
             except socket.timeout, ex:
                 pass
         print "sending final message"
