@@ -6,7 +6,7 @@ from dashi import bootstrap
 import datetime
 import simplejson as json
 
-class DashiScalePonger(object):
+class DashiConcurScalePonger(object):
 
     def __init__(self, CFG):
         self.CFG = CFG
@@ -16,6 +16,7 @@ class DashiScalePonger(object):
         self.dashi.handle(self.final_msg, "final_msg")
 
     def ping(self, from_name=None):
+        print "ponging to %s" % (from_name)
         self.dashi.fire(from_name, "pong")
 
     def final_msg(self):
@@ -31,11 +32,11 @@ class DashiScalePonger(object):
                 pass
 
 
-class DashiScalePinger(Thread):
+class DashiConcurScalePinger(Thread):
 
     def __init__(self, CFG, cnt):
         Thread.__init__(self)
-        self._myname = self.CFG.test.pinger_name + "_" + str(cnt)
+        self._myname = CFG.test.pinger_name + "_" + str(cnt)
         self.CFG = CFG
         self.dashi = bootstrap.dashi_connect(self._myname, CFG)
         self.done = False
@@ -50,13 +51,13 @@ class DashiScalePinger(Thread):
 
     def go(self):
         self.timer.start()
-        print "sending first ping"
+        print "sending first ping to %s" % (self.CFG.test.ponger_name)
+        self.dashi.fire(self.CFG.test.ponger_name, "ping", from_name=self._myname)
         while not self.done:
             try:
-                self.dashi.fire(self.CFG.test.ponger_name, "ping")
+                self.dashi.consume(count=1, timeout=10)
             except socket.timeout, ex:
                 pass
-        print "sending final message"
 
     def timeout(self):
         self.end_time = datetime.datetime.now()
@@ -72,10 +73,11 @@ def main(argv):
 
     if CFG.test.type == "ping":
         sender_count = int(CFG.test.concur)
+        print "sender count %d" % (sender_count)
         thrs = []
         start_time = datetime.datetime.now()
         for i in range(0, sender_count):
-            sender = DashiScalePinger(CFG)
+            sender = DashiConcurScalePinger(CFG, i)
             thrs.append(sender)
             sender.start()
 
@@ -96,7 +98,7 @@ def main(argv):
         res['process_type'] = "pinger"
         print "JSON: %s" % (json.dumps(res))
     else:
-        receiver = DashiScalePonger(CFG)
+        receiver = DashiConcurScalePonger(CFG)
         receiver.go()
 
 

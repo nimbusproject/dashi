@@ -14,9 +14,10 @@ loggers:
     level: WARN
 
 test:
+  concur: 64
   name: ping
   pinger_name: ping
   ponger_name: pong
   consume_timeout: 5
   consume_count: 1
-  runtime: 15
+  runtime: 60
