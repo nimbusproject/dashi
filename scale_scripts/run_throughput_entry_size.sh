@@ -4,12 +4,12 @@ sender_host=$1
 receiver_host=$2
 amqp_host=$3
 
-out_dir="thoughput".`date +%s`
+out_dir="throughput".`date +%s`
 mkdir $out_dir
 out_file=$out_dir/throughput.size.data
 l_conf_file=`pwd`/conf.yml
 r_conf_file=/tmp/conf.yml
-py=/home/bresnaha/DASHITESTS/bin/python
+py=/home/bresnaha/pycharmVE/bin/python
 
 l_pgm_file=`pwd`/throughput.py
 r_pgm_file=/tmp/throughput.py
@@ -21,9 +21,9 @@ scp $l_conf_file $receiver_host:$r_conf_file
 scp $l_pgm_file $sender_host:$r_pgm_file
 scp $l_pgm_file $receiver_host:$r_pgm_file
 
-trials=4
+trials=1
 entry_count="1"
-entry_size="1 2 4 8 16 32 64 128 256 512 1024 2048 4096 8192"
+entry_size="1 8 128 256 512 1024 2048 4096 8192"
 
 touch $out_file
 date >> $out_file
@@ -46,10 +46,10 @@ do
 
             cmd_line_args="--test.message.entry_size=$sz --test.message.entry_count=$cnt --server.amqp.host=$amqp_host"
 
-            ssh $receiver_host $py $r_pgm_file --test.type=R $cmd_line_args $r_conf_file >> $out_file &
+            ssh $receiver_host $py $r_pgm_file --test.type=R $cmd_line_args $r_conf_file | tee $out_file &
             recv_pid=$!
             sleep 2
-            ssh $sender_host $py $r_pgm_file --test.type=S $cmd_line_args $r_conf_file >> $out_file
+            ssh $sender_host $py $r_pgm_file --test.type=S $cmd_line_args $r_conf_file | tee $out_file
 
             echo "Sender finished, waiting for receiver"
             echo "Receiver finished"

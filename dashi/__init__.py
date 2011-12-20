@@ -1,4 +1,5 @@
 import socket
+import threading
 import traceback
 import uuid
 import sys
@@ -18,7 +19,7 @@ class DashiConnection(object):
 
     #TODO support connection info instead of uri
 
-    def __init__(self, name, uri, exchange, durable=False, auto_delete=True):
+    def __init__(self, name, uri, exchange, durable=False, auto_delete=True, serializer=None):
         self._conn = BrokerConnection(uri)
         self._name = name
         self._exchange_name = exchange
@@ -32,10 +33,23 @@ class DashiConnection(object):
         self._consumer_conn = None
         self._consumer = None
 
-    def fire(self, name, operation, **kwargs):
+        self._serializer = serializer
+
+    @property
+    def name(self):
+        return self._name
+
+    def fire(self, name, operation, args=None, **kwargs):
         """Send a message without waiting for a reply
         """
-        d = dict(op=operation, args=kwargs)
+
+        if args:
+            if kwargs:
+                raise TypeError("specify args dict or keyword arguments, not both")
+        else:
+            args = kwargs
+
+        d = dict(op=operation, args=args)
 
         with producers[self._conn].acquire(block=True) as producer:
             maybe_declare(self._exchange, producer.channel)
@@ -92,7 +106,7 @@ class DashiConnection(object):
                 maybe_declare(self._exchange, producer.channel)
                 log.debug("sending call to %s:%s", name, operation)
                 producer.publish(d, routing_key=name, headers=headers,
-                                 exchange=self._exchange)
+                                 exchange=self._exchange, serializer=self._serializer)
 
             with consumer:
                 log.debug("awaiting call reply on %s", msg_id)
@@ -108,7 +122,7 @@ class DashiConnection(object):
     def reply(self, msg_id, body):
         with producers[self._conn].acquire(block=True) as producer:
             try:
-                producer.publish(body, routing_key=msg_id, exchange=msg_id)
+                producer.publish(body, routing_key=msg_id, exchange=msg_id, serializer=self._serializer)
             except self._conn.channel_errors:
                 log.exception("Failed to reply to msg %s", msg_id)
 
@@ -122,8 +136,13 @@ class DashiConnection(object):
     def consume(self, count=None, timeout=None):
         self._consumer.consume(count, timeout)
 
-    def cancel(self):
-        self._consumer.cancel()
+    def cancel(self, block=True):
+        if self._consumer:
+            self._consumer.cancel(block=block)
+
+    def disconnect(self):
+        if self._consumer:
+            self._consumer.disconnect()
 
 
 class DashiConsumer(object):
@@ -136,6 +155,7 @@ class DashiConsumer(object):
         self._channel = None
         self._ops = {}
         self._cancelled = False
+        self._consumer_lock = threading.Lock()
 
         self.connect()
 
@@ -152,16 +172,29 @@ class DashiConsumer(object):
                 callbacks=[self._callback])
         self._consumer.consume()
 
+    def disconnect(self):
+        self._consumer.cancel()
+
     def consume(self, count=None, timeout=None):
-        if count:
-            i = 0
-            while i < count and not self._cancelled:
-                self._consume_one(timeout)
-                i += 1
-        else:
-            while not self._cancelled:
-                self._consume_one(timeout)
-        self._cancelled = False
+
+        # hold a lock for the duration of the consuming. this prevents
+        # multiple consumers and allows cancel to detect when consuming
+        # has ended.
+        if not self._consumer_lock.acquire(False):
+            raise Exception("only one consumer thread may run concurrently")
+
+        try:
+            if count:
+                i = 0
+                while i < count and not self._cancelled:
+                    self._consume_one(timeout)
+                    i += 1
+            else:
+                while not self._cancelled:
+                    self._consume_one(timeout)
+        finally:
+            self._consumer_lock.release()
+            self._cancelled = False
 
     def _consume_one(self, timeout=None):
 
@@ -191,8 +224,12 @@ class DashiConsumer(object):
                         inner_timeout = timeout - elapsed
 
 
-    def cancel(self):
+    def cancel(self, block=True):
         self._cancelled = True
+        if block:
+            # acquire the lock and release it immediately
+            with self._consumer_lock:
+                pass
 
     def _callback(self, body, message):
         reply_to = None
@@ -215,6 +252,9 @@ class DashiConsumer(object):
 
             try:
                 ret = op_fun(**args)
+            except TypeError, e:
+                log.exception("Type error with handler for %s:%s", self._name, op)
+                raise BadRequestError("Type error: %s" % str(e))
             except Exception:
                 log.exception("Error in handler for %s:%s", self._name, op)
                 raise
