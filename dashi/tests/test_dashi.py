@@ -3,6 +3,7 @@ import threading
 from functools import partial
 import itertools
 import uuid
+import logging
 
 from kombu.pools import connections
 
@@ -10,7 +11,7 @@ import dashi
 import dashi.util
 from dashi.tests.util import who_is_calling
 
-log = dashi.util.get_logger()
+log = logging.getLogger(__name__)
 
 _NO_REPLY = object()
 
@@ -32,6 +33,7 @@ class TestReceiver(object):
         self.reply_with = {}
 
         self.consumer_thread = None
+        self.condition = threading.Condition()
 
     def handle(self, opname, reply_with=_NO_REPLY):
         if reply_with is not _NO_REPLY:
@@ -39,12 +41,22 @@ class TestReceiver(object):
         self.conn.handle(partial(self._handler, opname), opname)
 
     def _handler(self, opname, **kwargs):
-        self.received.append((opname, kwargs))
+        with self.condition:
+            self.received.append((opname, kwargs))
+            self.condition.notifyAll()
+
         if opname in self.reply_with:
             reply_with = self.reply_with[opname]
             if callable(reply_with):
                 return reply_with()
             return reply_with
+
+    def wait(self, timeout=5):
+        with self.condition:
+            while not self.received:
+                self.condition.wait(timeout)
+                if not self.received:
+                    raise Exception("timed out waiting for message")
 
     def consume(self, count):
         self.conn.consume(count=count, timeout=self.consume_timeout)
@@ -199,6 +211,30 @@ class DashiConnectionTests(unittest.TestCase):
         receiver.cancel()
 
         # this should hang forever if cancel doesn't work
+        receiver.join_consumer_thread()
+
+    def test_cancel_resume_cancel(self):
+        receiver = TestReceiver(uri=self.uri, exchange="x1")
+        receiver.handle("test", 1)
+        receiver.consume_in_thread()
+
+        conn = dashi.DashiConnection("s1", self.uri, "x1")
+        self.assertEqual(1, conn.call(receiver.name, "test"))
+
+        receiver.cancel()
+        receiver.join_consumer_thread()
+        receiver.clear()
+
+        # send message while receiver is cancelled
+        conn.fire(receiver.name, "test", hats=4)
+
+        # start up consumer again. message should arrive.
+        receiver.consume_in_thread()
+
+        receiver.wait()
+        self.assertEqual(receiver.received[-1], ("test", dict(hats=4)))
+
+        receiver.cancel()
         receiver.join_consumer_thread()
 
 

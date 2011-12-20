@@ -1,9 +1,6 @@
 import logging
 import threading
 
-def get_logger():
-    return logging.getLogger('dashi')
-
 
 class LoopingCall(object):
     def __init__(self, fun, *args, **kwargs):
@@ -19,8 +16,12 @@ class LoopingCall(object):
 
         self.running = False
 
+    def __del__(self):
+        self.stop()
+
     def start(self, interval, now=True):
         assert self.thread is None
+        self.cancelled.clear()
 
         self.running = True
         self.thread = threading.Thread(target=self._looper,
@@ -29,22 +30,25 @@ class LoopingCall(object):
         self.thread.start()
 
     def stop(self):
-        self.cancelled.set()
-        self.thread = None
+        if self.thread:
+            self.cancelled.set()
 
     def __call__(self):
         try:
             self.fun(*self.args, **self.kwargs)
         except Exception:
-            log = get_logger()
+            log = logging.getLogger(__name__)
             log.exception("Error in looping call")
 
     def _looper(self, interval, now):
-        if now:
-            self()
-        while not self.cancelled.is_set():
-            cancelled = self.cancelled.wait(interval)
-            if not cancelled:
+        try:
+            if now:
                 self()
-        self.cancelled.clear()
-        self.running = False
+            while not self.cancelled.is_set():
+                cancelled = self.cancelled.wait(interval)
+                if not cancelled:
+                    self()
+        finally:
+            self.cancelled.clear()
+            self.thread = None
+            self.running = False
