@@ -23,13 +23,19 @@ scp $l_pgm_file $pinger_host:$r_pgm_file
 scp $l_pgm_file $ponger_host:$r_pgm_file
 
 trials=1
+con_cur="1 8 16 64 128 199"
 
 touch $out_file
 date >> $out_file
 
+for cur in $con_cur
+do
 for i in `seq $trials`
 do
     echo "running: $i"
+
+    ssh $pinger_host pkill python
+    ssh $ponger_host pkill python
 
     cpu_file=$out_file.pong.$i
     ssh $ponger_host top -b -d 1 > $cpu_file&
@@ -38,11 +44,14 @@ do
     ssh $pinger_host top -b -d 1 > $cpu_file&
     kill_pid2=$!
 
-    cmd_line_args="--server.amqp.host=$amqp_host --dashi.exchange=$exchange"
+    cmd_line_args="--server.amqp.host=$amqp_host --dashi.exchange=$exchange --test.concur=$cur"
 
-    ssh $ponger_host $py $r_pgm_file --test.type=pong $cmd_line_args $r_conf_file &
+    ponger_cmd="ssh $ponger_host $py $r_pgm_file --test.type=pong $cmd_line_args $r_conf_file"
+    $ponger_cmd &
     recv_pid=$!
+    echo $ponger_cmd
     sleep 2
+
     ssh $pinger_host $py $r_pgm_file --test.type=ping $cmd_line_args $r_conf_file | tee $out_file
 
     echo "pinger finished, waiting for ponger"
@@ -54,4 +63,5 @@ do
     wait
     sleep 2
 
+done
 done

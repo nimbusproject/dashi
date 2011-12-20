@@ -16,7 +16,7 @@ class DashiConcurScalePonger(object):
         self.dashi.handle(self.final_msg, "final_msg")
 
     def ping(self, from_name=None):
-        print "ponging to %s" % (from_name)
+        #print "ponging to %s" % (from_name)
         self.dashi.fire(from_name, "pong")
 
     def final_msg(self):
@@ -51,7 +51,7 @@ class DashiConcurScalePinger(Thread):
 
     def go(self):
         self.timer.start()
-        print "sending first ping to %s" % (self.CFG.test.ponger_name)
+        #print "sending first ping to %s" % (self.CFG.test.ponger_name)
         self.dashi.fire(self.CFG.test.ponger_name, "ping", from_name=self._myname)
         while not self.done:
             try:
@@ -64,6 +64,7 @@ class DashiConcurScalePinger(Thread):
         self.done = True
 
     def pong(self):
+        #print "got pong"
         self.message_count = self.message_count + 1
         self.dashi.fire(self.CFG.test.ponger_name, "ping", from_name=self._myname)
 
@@ -96,14 +97,17 @@ def main(argv):
         res['message_count'] = msg_count_total
         res['runtime'] = runtime
         res['process_type'] = "pinger"
+        res['connection_count'] = len(thrs)
         print "JSON: %s" % (json.dumps(res))
     else:
+        print "ponger go"
         receiver = DashiConcurScalePonger(CFG)
         receiver.go()
 
 
         
 if __name__ == '__main__':
+    print "start"
     rc = main(sys.argv)
     print "exit"
     sys.exit(rc)
