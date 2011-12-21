@@ -1,3 +1,4 @@
+from collections import namedtuple
 import socket
 import threading
 import traceback
@@ -41,6 +42,12 @@ class DashiConnection(object):
 
     def fire(self, name, operation, args=None, **kwargs):
         """Send a message without waiting for a reply
+
+        @param name: name of destination service queue
+        @param operation: name of service operation to invoke
+        @param args: dictionary of keyword args to pass to operation.
+                     Use this OR kwargs.
+        @param kwargs: additional args to pass to operation
         """
 
         if args:
@@ -50,10 +57,12 @@ class DashiConnection(object):
             args = kwargs
 
         d = dict(op=operation, args=args)
+        headers = {'sender' : self.name}
 
         with producers[self._conn].acquire(block=True) as producer:
             maybe_declare(self._exchange, producer.channel)
-            producer.publish(d, routing_key=name, exchange=self._exchange_name)
+            producer.publish(d, routing_key=name, exchange=self._exchange_name,
+                             headers=headers)
 
     def call(self, name, operation, timeout=5, args=None, **kwargs):
         """Send a message and wait for reply
@@ -100,7 +109,7 @@ class DashiConnection(object):
             consumer.declare()
 
             d = dict(op=operation, args=args)
-            headers = {'reply-to' : msg_id}
+            headers = {'reply-to' : msg_id, 'sender' : self.name}
 
             with producers[self._conn].acquire(block=True) as producer:
                 maybe_declare(self._exchange, producer.channel)
@@ -126,24 +135,45 @@ class DashiConnection(object):
             except self._conn.channel_errors:
                 log.exception("Failed to reply to msg %s", msg_id)
 
-    def handle(self, operation, operation_name=None):
+    def handle(self, operation, operation_name=None, sender_kwarg=None):
+        """Handle an operation using the specified function
+
+        @param operation: function to call for this operation
+        @param operation_name: operation name. if unspecifed operation.__name__ is used
+        @param sender_kwarg: optional keyword arg on operation to feed in sender name
+        """
         if not self._consumer:
             self._consumer_conn = connections[self._conn].acquire()
             self._consumer = DashiConsumer(self, self._consumer_conn,
                     self._name, self._exchange)
-        self._consumer.add_op(operation_name or operation.__name__, operation)
+        self._consumer.add_op(operation_name or operation.__name__, operation,
+                              sender_kwarg=sender_kwarg)
 
     def consume(self, count=None, timeout=None):
+        """Consume operations from the queue
+
+        @param count: number of messages to consume before returning
+        @param timeout: time in seconds to wait without receiving a message
+        """
         self._consumer.consume(count, timeout)
 
     def cancel(self, block=True):
+        """Cancel a call to consume() happening in another thread
+
+        This could take up to DashiConnection.consumer_timeout to complete.
+
+        @param block: if True, waits until the consumer has returned
+        """
         if self._consumer:
             self._consumer.cancel(block=block)
 
     def disconnect(self):
+        """Disconnects a consumer binding if exists
+        """
         if self._consumer:
             self._consumer.disconnect()
 
+_OpSpec = namedtuple('_OpSpec', ['function', 'sender_kwarg'])
 
 class DashiConsumer(object):
     def __init__(self, dashi, connection, name, exchange):
@@ -246,9 +276,15 @@ class DashiConsumer(object):
                          exc_info=True)
                 raise BadRequestError("Invalid request: %s" % str(e))
 
-            op_fun = self._ops.get(op)
-            if not op_fun:
+            op_spec = self._ops.get(op)
+            if not op_spec:
                 raise UnknownOperationError("Unknown operation: " + op)
+            op_fun = op_spec.function
+
+            # stick the sender into kwargs if handler requested it
+            if op_spec.sender_kwarg:
+                sender = message.headers.get('sender')
+                args[op_spec.sender_kwarg] = sender
 
             try:
                 ret = op_fun(**args)
@@ -286,11 +322,11 @@ class DashiConsumer(object):
 
             message.ack()
 
-    def add_op(self, name, fun):
+    def add_op(self, name, fun, sender_kwarg=None):
         if not callable(fun):
             raise ValueError("operation function must be callable")
         
-        self._ops[name] = fun
+        self._ops[name] = _OpSpec(fun, sender_kwarg)
 
 
 def raise_error(error):

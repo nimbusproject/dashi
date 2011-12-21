@@ -35,10 +35,10 @@ class TestReceiver(object):
         self.consumer_thread = None
         self.condition = threading.Condition()
 
-    def handle(self, opname, reply_with=_NO_REPLY):
+    def handle(self, opname, reply_with=_NO_REPLY, **kwargs):
         if reply_with is not _NO_REPLY:
             self.reply_with[opname] = reply_with
-        self.conn.handle(partial(self._handler, opname), opname)
+        self.conn.handle(partial(self._handler, opname), opname, **kwargs)
 
     def _handler(self, opname, **kwargs):
         with self.condition:
@@ -233,6 +233,43 @@ class DashiConnectionTests(unittest.TestCase):
 
         receiver.wait()
         self.assertEqual(receiver.received[-1], ("test", dict(hats=4)))
+
+        receiver.cancel()
+        receiver.join_consumer_thread()
+
+    def test_handle_sender_kwarg(self):
+        receiver = TestReceiver(uri=self.uri, exchange="x1")
+        receiver.handle("test1", "hello", sender_kwarg="sender")
+        receiver.handle("test2", "hi", sender_kwarg="spender")
+        receiver.consume_in_thread()
+
+        sender_name = uuid.uuid4().hex
+        conn = dashi.DashiConnection(sender_name, self.uri, "x1")
+        args = dict(a=1, b="sandwich")
+
+        expected_args1 = args.copy()
+        expected_args1['sender'] = sender_name
+
+        expected_args2 = args.copy()
+        expected_args2['spender'] = sender_name
+
+        # first one is a fire
+        conn.fire(receiver.name, "test1", args=args)
+        receiver.wait()
+        opname, gotargs = receiver.received[0]
+
+        self.assertEqual(opname, "test1")
+        self.assertEqual(gotargs, expected_args1)
+
+        receiver.clear()
+
+        # next try a call
+        reply = conn.call(receiver.name, "test2", **args)
+        self.assertEqual(reply, "hi")
+
+        opname, gotargs = receiver.received[0]
+        self.assertEqual(opname, "test2")
+        self.assertEqual(gotargs, expected_args2)
 
         receiver.cancel()
         receiver.join_consumer_thread()
