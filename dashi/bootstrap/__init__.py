@@ -38,9 +38,26 @@ def configure(config_files=DEFAULT_CONFIG_FILES,
     config_files = config_files + cli_cfg_files
 
     CFG = Config(config_files).data
-    #LOGGING_CFG = Config(logging_config_files).data #TODO logging setup
-
     CFG = dict_merge(CFG, cli_cfg)
+
+    try:
+        # Make log directory if it doesn't exist
+        for handler in CFG.logging.get('handlers', {}).itervalues():
+            if 'filename' in handler:
+                log_dir = os.path.dirname(handler['filename'])
+                if not os.path.exists(log_dir):
+                    os.makedirs(log_dir)
+        try:
+            #TODO: This requires python 2.7
+            logging.config.dictConfig(CFG.logging)
+        except AttributeError:
+            msg = '"logging.config.dictConfig" doesn\'t seem to be supported '
+            msg += 'in your python. Try Python 2.7.'
+            print >> sys.stderr, msg
+            raise
+    except AttributeError:
+        print >> sys.stderr, "No logging configured, continuing without."
+        pass
 
     return CFG
 
@@ -92,7 +109,7 @@ def _start_methods(methods=[], join=True):
         thread.daemon = True
         threads.append(thread)
         thread.start()
-    
+
     if not join:
         return threads
 
@@ -102,7 +119,7 @@ def _start_methods(methods=[], join=True):
                 t.join(1)
                 if not t.isAlive():
                     threads.remove(t)
-                         
+
     except KeyboardInterrupt:
         pass
 
@@ -149,7 +166,7 @@ def _parse_argv(argv=copy(sys.argv)):
             else:
                 # No val available, probably a flag
                 val = None
-        
+
         if arg[0] == '-':
             key = arg.lstrip('-')
             if not val:
@@ -196,11 +213,11 @@ def get_logger(name, CFG=None):
 
     if CFG:
         # Make log directory if it doesn't exist
-        for handler in CFG.get('handlers', {}).itervalues(): 
-            if 'filename' in handler: 
-                log_dir = os.path.dirname(handler['filename']) 
-                if not os.path.exists(log_dir): 
-                    os.makedirs(log_dir) 
+        for handler in CFG.get('handlers', {}).itervalues():
+            if 'filename' in handler:
+                log_dir = os.path.dirname(handler['filename'])
+                if not os.path.exists(log_dir):
+                    os.makedirs(log_dir)
         try:
             #TODO: This requires python 2.7
             logging.config.dictConfig(CFG)
