@@ -11,7 +11,7 @@ mkdir $out_dir
 out_file=$out_dir/pingpong.data
 l_conf_file=`pwd`/ping.yml
 r_conf_file=/tmp/conf.yml
-py=/home/bresnaha/DASHITESTS/bin/python
+py=$DASHITESTS_PY
 
 l_pgm_file=`pwd`/call_pingpong.py
 r_pgm_file=/tmp/call_pingpong.py

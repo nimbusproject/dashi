@@ -9,7 +9,7 @@ mkdir $out_dir
 out_file=$out_dir/throughput.size.data
 l_conf_file=`pwd`/conf.yml
 r_conf_file=/tmp/conf.yml
-py=/home/bresnaha/pycharmVE/bin/python
+py=$DASHITESTS_PY
 
 l_pgm_file=`pwd`/throughput.py
 r_pgm_file=/tmp/throughput.py
