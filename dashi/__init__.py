@@ -62,7 +62,7 @@ class DashiConnection(object):
         with producers[self._conn].acquire(block=True) as producer:
             maybe_declare(self._exchange, producer.channel)
             producer.publish(d, routing_key=name, exchange=self._exchange_name,
-                             headers=headers)
+                             headers=headers, serializer=self._serializer)
 
     def call(self, name, operation, timeout=5, args=None, **kwargs):
         """Send a message and wait for reply
