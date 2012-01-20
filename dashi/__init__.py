@@ -24,7 +24,7 @@ class DashiConnection(object):
         self._conn = BrokerConnection(uri)
         self._name = name
         self._exchange_name = exchange
-        self._exchange = Exchange(name=exchange, type='topic',
+        self._exchange = Exchange(name=exchange, type='direct',
                                   durable=durable, auto_delete=auto_delete)
 
         # visible attributes
