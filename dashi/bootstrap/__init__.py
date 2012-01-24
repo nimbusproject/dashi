@@ -79,7 +79,7 @@ def dashi_connect(topic, CFG=None, amqp_uri=None):
                         CFG.server.amqp.vhost,
                         )
     try:
-        dashi_exchange = CFG.dashi.exchange
+        dashi_exchange = CFG.server.amqp.exchange
     except AttributeError:
         dashi_exchange = DEFAULT_EXCHANGE
 
