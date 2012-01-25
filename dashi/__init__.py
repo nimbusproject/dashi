@@ -21,6 +21,18 @@ class DashiConnection(object):
     #TODO support connection info instead of uri
 
     def __init__(self, name, uri, exchange, durable=False, auto_delete=True, serializer=None):
+        """Set up a Dashi connection
+
+        @param name: name of destination service queue used by consumers
+        @param uri: broker URI (e.g. 'amqp://guest:guest@localhost:5672//')
+        @param exchange: name of exchange to create and use
+        @param durable: if True, destination service queue and exchange will be
+        created as durable
+        @param auto_delete: if True, destination service queue and exchange
+        will be deleted when all consumers are gone
+        @param serializer: specify a serializer for message encoding
+        """
+
         self._conn = BrokerConnection(uri)
         self._name = name
         self._exchange_name = exchange
