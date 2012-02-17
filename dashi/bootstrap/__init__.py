@@ -78,6 +78,14 @@ def dashi_connect(topic, CFG=None, amqp_uri=None):
                         CFG.server.amqp.host,
                         CFG.server.amqp.vhost,
                         )
+
+    # force small polling interval for in memory transport. This is only
+    # used in tests.
+    if amqp_uri.startswith('memory://'):
+        transport_options = dict(polling_interval=0.01)
+    else:
+        transport_options = None
+
     try:
         dashi_exchange = CFG.server.amqp.exchange
     except AttributeError:
@@ -88,7 +96,8 @@ def dashi_connect(topic, CFG=None, amqp_uri=None):
     except AttributeError:
         serializer = None
 
-    return DashiConnection(topic, amqp_uri, dashi_exchange, serializer=serializer)
+    return DashiConnection(topic, amqp_uri, dashi_exchange,
+            serializer=serializer, transport_options=transport_options)
 
 
 def enable_gevent():

@@ -85,13 +85,16 @@ class TestReceiver(object):
 class DashiConnectionTests(unittest.TestCase):
 
     uri = 'memory://hello'
+    transport_options = dict(polling_interval=0.01)
 
     def test_fire(self):
-        receiver = TestReceiver(uri=self.uri, exchange="x1")
+        receiver = TestReceiver(uri=self.uri, exchange="x1",
+            transport_options=self.transport_options)
         receiver.handle("test")
         receiver.handle("test2")
 
-        conn = dashi.DashiConnection("s1", self.uri, "x1")
+        conn = dashi.DashiConnection("s1", self.uri, "x1",
+            transport_options=self.transport_options)
         args1 = dict(a=1, b="sandwich")
         conn.fire(receiver.name, "test", **args1)
 
@@ -120,12 +123,14 @@ class DashiConnectionTests(unittest.TestCase):
         self.assertEqual(gotargs, args3)
 
     def test_call(self):
-        receiver = TestReceiver(uri=self.uri, exchange="x1")
+        receiver = TestReceiver(uri=self.uri, exchange="x1",
+            transport_options=self.transport_options)
         replies = [5,4,3,2,1]
         receiver.handle("test", replies.pop)
         receiver.consume_in_thread(1)
 
-        conn = dashi.DashiConnection("s1", self.uri, "x1")
+        conn = dashi.DashiConnection("s1", self.uri, "x1",
+            transport_options=self.transport_options)
         args1 = dict(a=1, b="sandwich")
 
         ret = conn.call(receiver.name, "test", **args1)
@@ -141,11 +146,13 @@ class DashiConnectionTests(unittest.TestCase):
         receiver.join_consumer_thread()
 
     def test_call_unknown_op(self):
-        receiver = TestReceiver(uri=self.uri, exchange="x1")
+        receiver = TestReceiver(uri=self.uri, exchange="x1",
+            transport_options=self.transport_options)
         receiver.handle("test", True)
         receiver.consume_in_thread(1)
 
-        conn = dashi.DashiConnection("s1", self.uri, "x1")
+        conn = dashi.DashiConnection("s1", self.uri, "x1",
+            transport_options=self.transport_options)
 
         try:
             conn.call(receiver.name, "notarealop")
@@ -160,11 +167,13 @@ class DashiConnectionTests(unittest.TestCase):
         def raise_hell():
             raise Exception("hell")
 
-        receiver = TestReceiver(uri=self.uri, exchange="x1")
+        receiver = TestReceiver(uri=self.uri, exchange="x1",
+            transport_options=self.transport_options)
         receiver.handle("raiser", raise_hell)
         receiver.consume_in_thread(1)
 
-        conn = dashi.DashiConnection("s1", self.uri, "x1")
+        conn = dashi.DashiConnection("s1", self.uri, "x1",
+            transport_options=self.transport_options)
 
         try:
             conn.call(receiver.name, "raiser")
@@ -182,14 +191,16 @@ class DashiConnectionTests(unittest.TestCase):
         receiver_name = None
 
         for i in range(3):
-            receiver = TestReceiver(uri=self.uri, exchange="x1", **extras)
+            receiver = TestReceiver(uri=self.uri, exchange="x1",
+                       transport_options=self.transport_options, **extras)
             if not receiver_name:
                 receiver_name = receiver.name
                 extras['name'] = receiver.name
             receiver.handle("test")
             receivers.append(receiver)
 
-        conn = dashi.DashiConnection("s1", self.uri, "x1")
+        conn = dashi.DashiConnection("s1", self.uri, "x1",
+            transport_options=self.transport_options)
         for i in range(10):
             conn.fire(receiver_name, "test", n=i)
 
@@ -204,7 +215,8 @@ class DashiConnectionTests(unittest.TestCase):
 
     def test_cancel(self):
 
-        receiver = TestReceiver(uri=self.uri, exchange="x1")
+        receiver = TestReceiver(uri=self.uri, exchange="x1",
+            transport_options=self.transport_options)
         receiver.handle("nothing", 1)
         receiver.consume_in_thread(1)
 
@@ -214,11 +226,13 @@ class DashiConnectionTests(unittest.TestCase):
         receiver.join_consumer_thread()
 
     def test_cancel_resume_cancel(self):
-        receiver = TestReceiver(uri=self.uri, exchange="x1")
+        receiver = TestReceiver(uri=self.uri, exchange="x1",
+            transport_options=self.transport_options)
         receiver.handle("test", 1)
         receiver.consume_in_thread()
 
-        conn = dashi.DashiConnection("s1", self.uri, "x1")
+        conn = dashi.DashiConnection("s1", self.uri, "x1",
+            transport_options=self.transport_options)
         self.assertEqual(1, conn.call(receiver.name, "test"))
 
         receiver.cancel()
@@ -238,13 +252,15 @@ class DashiConnectionTests(unittest.TestCase):
         receiver.join_consumer_thread()
 
     def test_handle_sender_kwarg(self):
-        receiver = TestReceiver(uri=self.uri, exchange="x1")
+        receiver = TestReceiver(uri=self.uri, exchange="x1",
+            transport_options=self.transport_options)
         receiver.handle("test1", "hello", sender_kwarg="sender")
         receiver.handle("test2", "hi", sender_kwarg="spender")
         receiver.consume_in_thread()
 
         sender_name = uuid.uuid4().hex
-        conn = dashi.DashiConnection(sender_name, self.uri, "x1")
+        conn = dashi.DashiConnection(sender_name, self.uri, "x1",
+            transport_options=self.transport_options)
         args = dict(a=1, b="sandwich")
 
         expected_args1 = args.copy()
@@ -285,11 +301,13 @@ class RabbitDashiConnectionTests(DashiConnectionTests):
 
         # hackily ensure that call() releases its channel
 
-        receiver = TestReceiver(uri=self.uri, exchange="x1")
+        receiver = TestReceiver(uri=self.uri, exchange="x1",
+            transport_options=self.transport_options)
         receiver.handle("test", "myreply")
         receiver.consume_in_thread(1)
 
-        conn = dashi.DashiConnection("s1", self.uri, "x1")
+        conn = dashi.DashiConnection("s1", self.uri, "x1",
+            transport_options=self.transport_options)
 
         # peek into connection to grab a channel and note its id
         with connections[conn._conn].acquire(block=True) as kombuconn:
