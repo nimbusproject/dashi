@@ -102,7 +102,7 @@ def dashi_connect(topic, CFG=None, amqp_uri=None):
         serializer = None
 
     try:
-        ssl = CFG.server.ssl
+        ssl = CFG.server.amqp.ssl
         ssl = True
     except AttributeError:
         ssl = False
