@@ -3,6 +3,8 @@ import sys
 from threading import Thread
 from dashi import DashiConnection
 
+g_rabbit_url = ""
+
 class TalkConsole(object):
 
     def __init__(self):
@@ -23,8 +25,9 @@ class DashiTalker(Thread):
         Thread.__init__(self)
         self.name = name
         self.done = False
-        self.exchange = "dashitalkexchange"
-        self.dashi = DashiConnection(self.name, "amqp://guest:guest@127.0.0.1//", self.exchange)
+        self.exchange = "default_dashi_exchange"
+        global g_rabbit_url
+        self.dashi = DashiConnection(self.name, g_rabbit_url, self.exchange, ssl=True)
         self.subscribers = []
         self.console = console
         self.dashi.handle(self.new_joined_chat, "new_joined_chat")
@@ -62,11 +65,15 @@ class DashiTalker(Thread):
         self.input_message("%s has left the room" % (self.name))
 
 def main(argv):
-    my_name = argv[0]
+    global g_rabbit_url
+    g_rabbit_url = argv[0]
+    my_name = argv[1]
     console = TalkConsole()
     talker = DashiTalker(console, my_name)
-    if len(argv) > 1:
-        talker.request_conversation(argv[1])
+    if len(argv) > 2:
+        print "request"
+        print  argv[2]
+        talker.request_conversation(argv[2])
 
     talker.start()
     done = False

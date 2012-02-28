@@ -21,7 +21,7 @@ class DashiConnection(object):
     #TODO support connection info instead of uri
 
     def __init__(self, name, uri, exchange, durable=False, auto_delete=True,
-                 serializer=None, transport_options=None):
+                 serializer=None, transport_options=None, ssl=False):
         """Set up a Dashi connection
 
         @param name: name of destination service queue used by consumers
@@ -35,7 +35,7 @@ class DashiConnection(object):
         @param transport_options: custom parameter dict for the transport backend
         """
 
-        self._conn = BrokerConnection(uri, transport_options=transport_options)
+        self._conn = BrokerConnection(uri, transport_options=transport_options,ssl=ssl)
         self._name = name
         self._exchange_name = exchange
         self._exchange = Exchange(name=exchange, type='direct',

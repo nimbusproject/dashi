@@ -72,10 +72,15 @@ def dashi_connect(topic, CFG=None, amqp_uri=None):
         if 'memory' in CFG.server:
             amqp_uri = "memory://%s" % (CFG.server.memory.name)
         else:
-            amqp_uri = "amqp://%s:%s@%s/%s" % (
+            try:
+                port_str = ":%d" % (CFG.server.amqp.port)
+            except AttributeError:
+                port_str = ""
+            amqp_uri = "amqp://%s:%s@%s%s/%s" % (
                         CFG.server.amqp.username,
                         CFG.server.amqp.password,
                         CFG.server.amqp.host,
+                        port_str,
                         CFG.server.amqp.vhost,
                         )
 
@@ -96,8 +101,14 @@ def dashi_connect(topic, CFG=None, amqp_uri=None):
     except AttributeError:
         serializer = None
 
+    try:
+        ssl = CFG.server.ssl
+        ssl = True
+    except AttributeError:
+        ssl = False
+
     return DashiConnection(topic, amqp_uri, dashi_exchange,
-            serializer=serializer, transport_options=transport_options)
+            serializer=serializer, transport_options=transport_options, ssl=ssl)
 
 
 def enable_gevent():
