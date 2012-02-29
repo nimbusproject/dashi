@@ -6,19 +6,11 @@ import uuid
 import sys
 import logging
 
-# Work around for a kombu bug
-from amqplib.client_0_8 import transport
-XXX = transport.SSLTransport
-
-
 from kombu.connection import BrokerConnection
 from kombu.messaging import Consumer
 from kombu.pools import connections, producers
 from kombu.entity import Queue, Exchange
 from kombu.common import maybe_declare
-
-setattr(transport, 'SSLTransport', XXX)
-
 
 
 log = logging.getLogger(__name__)
