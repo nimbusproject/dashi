@@ -4,8 +4,12 @@ from functools import partial
 import itertools
 import uuid
 import logging
+import time
+
 
 from kombu.pools import connections
+
+
 
 import dashi
 import dashi.util
@@ -51,12 +55,20 @@ class TestReceiver(object):
                 return reply_with()
             return reply_with
 
-    def wait(self, timeout=5):
+    def wait(self, timeout=5, pred=None):
+
+        if not pred:
+            pred = lambda received: bool(received)
+
+        start = time.time()
+        remaining = timeout
         with self.condition:
-            while not self.received:
-                self.condition.wait(timeout)
-                if not self.received:
-                    raise Exception("timed out waiting for message")
+            while not pred(self.received):
+                self.condition.wait(remaining)
+                now = time.time()
+                if now - start >= timeout and not pred(self.received):
+                    raise Exception("timed out waiting for messages")
+                remaining -= now - start
 
     def consume(self, count):
         self.conn.consume(count=count, timeout=self.consume_timeout)
@@ -324,4 +336,37 @@ class RabbitDashiConnectionTests(DashiConnectionTests):
             with kombuconn.channel() as channel:
                 log.debug("got channel ID %s", channel.channel_id)
                 self.assertEqual(channel_id, channel.channel_id)
+
+    def _thread_erroneous_replies(self, dashiconn, count):
+        log.debug("sending erroneous replies")
+        for i in range(count):
+            try:
+                dashiconn.reply(uuid.uuid4().hex, "alkjewfawlefja")
+            except Exception:
+                log.exception("Got expected exception replying to a nonexistent exchange")
+
+    def test_pool_problems(self):
+        receiver = TestReceiver(uri=self.uri, exchange="x1",
+            transport_options=self.transport_options)
+        receiver.handle("test1")
+        receiver.consume_in_thread()
+
+        conn = dashi.DashiConnection("s1", self.uri, "x1",
+            transport_options=self.transport_options)
+
+        t = threading.Thread(target=self._thread_erroneous_replies,
+            args=(conn, 100))
+        t.daemon = True
+        t.start()
+
+        try:
+            for i in range(100):
+                conn.fire(receiver.name, "test1", i=i)
+        finally:
+            t.join()
+
+        pred = lambda received: len(received) == 100
+        receiver.wait(pred=pred)
+
+        self.assertEqual(len(receiver.received), 100)
 
