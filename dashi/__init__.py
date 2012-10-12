@@ -12,8 +12,10 @@ from kombu.pools import connections, producers
 from kombu.entity import Queue, Exchange
 from kombu.common import maybe_declare
 
+from exceptions import DashiError, BadRequestError, NotFoundError, UnknownOperationError
 
 log = logging.getLogger(__name__)
+
 
 class DashiConnection(object):
 
@@ -356,35 +358,6 @@ def raise_error(error):
 
     raise exc_cls(**error)
 
-
-class DashiError(Exception):
-    def __init__(self, message=None, exc_type=None, value=None, traceback=None, **kwargs):
-        self.exc_type = exc_type
-        self.value = value
-        self.traceback = traceback
-
-        if message is None:
-            if exc_type:
-                if value:
-                    message = "%s: %s" % (exc_type, value)
-                else:
-                    message = exc_type
-            elif value:
-                message = value
-            else:
-                message = ""
-            if traceback:
-                message += "\n" + str(traceback)
-        super(DashiError, self).__init__(message)
-
-
-class BadRequestError(DashiError):
-    pass
-
-
-class UnknownOperationError(DashiError):
-    pass
-
-ERROR_PREFIX = "dashi."
-ERROR_TYPES = (BadRequestError, UnknownOperationError)
+ERROR_PREFIX = "dashi.exceptions."
+ERROR_TYPES = (BadRequestError, NotFoundError, UnknownOperationError)
 ERROR_TYPE_MAP = dict((cls.__name__, cls) for cls in ERROR_TYPES)
