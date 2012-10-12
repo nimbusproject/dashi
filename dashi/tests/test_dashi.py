@@ -15,6 +15,7 @@ from dashi.tests.util import who_is_calling
 
 log = logging.getLogger(__name__)
 
+_NO_EXCEPTION = object()
 _NO_REPLY = object()
 
 class TestReceiver(object):
@@ -33,11 +34,15 @@ class TestReceiver(object):
         self.conn.consumer_timeout = 0.01
         self.received = []
         self.reply_with = {}
+        self.raise_exception = {}
 
         self.consumer_thread = None
         self.condition = threading.Condition()
 
-    def handle(self, opname, reply_with=_NO_REPLY, **kwargs):
+    def handle(self, opname, reply_with=_NO_REPLY, raise_exception=_NO_EXCEPTION, **kwargs):
+        if raise_exception is not _NO_EXCEPTION:
+            self.raise_exception[opname] = raise_exception
+
         if reply_with is not _NO_REPLY:
             self.reply_with[opname] = reply_with
         self.conn.handle(partial(self._handler, opname), opname, **kwargs)
@@ -46,6 +51,10 @@ class TestReceiver(object):
         with self.condition:
             self.received.append((opname, kwargs))
             self.condition.notifyAll()
+
+        if opname in self.raise_exception:
+            raise_exception = self.raise_exception[opname]
+            raise raise_exception(opname)
 
         if opname in self.reply_with:
             reply_with = self.reply_with[opname]
@@ -299,6 +308,29 @@ class DashiConnectionTests(unittest.TestCase):
 
         receiver.cancel()
         receiver.join_consumer_thread()
+
+    def test_exceptions(self):
+        class CustomNotFoundError(Exception):
+            pass
+
+        receiver = TestReceiver(uri=self.uri, exchange="x1",
+            transport_options=self.transport_options)
+        receiver.conn.link_exceptions(custom_exception=CustomNotFoundError, dashi_exception=dashi.exceptions.NotFoundError)
+        receiver.handle("test_exception", raise_exception=CustomNotFoundError, sender_kwarg="sender")
+        receiver.consume_in_thread(1)
+
+        conn = dashi.DashiConnection("s1", self.uri, "x1",
+            transport_options=self.transport_options)
+        args1 = dict(a=1, b="sandwich")
+
+        try:
+            ret = conn.call(receiver.name, "test_exception", **args1)
+        except dashi.exceptions.NotFoundError:
+            pass
+        else:
+            self.fail("Expected NotFoundError")
+        finally:
+            receiver.join_consumer_thread()
 
 
 class RabbitDashiConnectionTests(DashiConnectionTests):

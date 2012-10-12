@@ -51,6 +51,8 @@ class DashiConnection(object):
         self._consumer_conn = None
         self._consumer = None
 
+        self._linked_exceptions = {}
+
         self._serializer = serializer
 
     @property
@@ -190,6 +192,16 @@ class DashiConnection(object):
         if self._consumer:
             self._consumer.disconnect()
 
+    def link_exceptions(self, custom_exception=None, dashi_exception=None):
+        """Link a custom exception thrown on the receiver to a dashi exception
+        """
+        if custom_exception is None:
+            raise ValueError("custom_exception must be set")
+        if dashi_exception is None:
+            raise ValueError("dashi_exception must be set")
+
+        self._linked_exceptions[custom_exception] = dashi_exception
+
 _OpSpec = namedtuple('_OpSpec', ['function', 'sender_kwarg'])
 
 class DashiConsumer(object):
@@ -325,6 +337,12 @@ class DashiConsumer(object):
                     # name on the exc_type.
 
                     exc_type = err[0]
+
+                    # Check if there is a dashi exception linked to this custom exception
+                    linked_exception = self._dashi._linked_exceptions.get(exc_type)
+                    if linked_exception:
+                        exc_type = linked_exception
+
                     known_type = ERROR_TYPE_MAP.get(exc_type.__name__)
                     if known_type and exc_type is known_type:
                         exc_type_name = ERROR_PREFIX + exc_type.__name__
