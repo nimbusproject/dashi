@@ -33,7 +33,7 @@ setupdict = {
     "download_url" : "http://www.nimbusproject.org/downloads/dashi-%s.tar.gz" % VERSION,
 }
 
-install_requires = ['kombu>=2.1.2', 'pyyaml']
+install_requires = ['kombu>=2.1.2,<2.5.0', 'pyyaml']
 tests_require = ["nose"]
 
 from setuptools import setup, find_packages
