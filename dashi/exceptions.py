@@ -29,3 +29,7 @@ class NotFoundError(DashiError):
 
 class UnknownOperationError(DashiError):
     pass
+
+
+class WriteConflictError(DashiError):
+    pass

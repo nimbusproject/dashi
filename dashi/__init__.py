@@ -12,7 +12,7 @@ from kombu.pools import connections, producers
 from kombu.entity import Queue, Exchange
 from kombu.common import maybe_declare
 
-from exceptions import DashiError, BadRequestError, NotFoundError, UnknownOperationError
+from exceptions import DashiError, BadRequestError, NotFoundError, UnknownOperationError, WriteConflictError
 
 log = logging.getLogger(__name__)
 
@@ -377,5 +377,5 @@ def raise_error(error):
     raise exc_cls(**error)
 
 ERROR_PREFIX = "dashi.exceptions."
-ERROR_TYPES = (BadRequestError, NotFoundError, UnknownOperationError)
+ERROR_TYPES = (BadRequestError, NotFoundError, UnknownOperationError, WriteConflictError)
 ERROR_TYPE_MAP = dict((cls.__name__, cls) for cls in ERROR_TYPES)
