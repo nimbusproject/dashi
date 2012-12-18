@@ -18,6 +18,7 @@ log = logging.getLogger(__name__)
 _NO_EXCEPTION = object()
 _NO_REPLY = object()
 
+
 class TestReceiver(object):
 
     consume_timeout = 5
@@ -144,7 +145,7 @@ class DashiConnectionTests(unittest.TestCase):
     def test_call(self):
         receiver = TestReceiver(uri=self.uri, exchange="x1",
             transport_options=self.transport_options)
-        replies = [5,4,3,2,1]
+        replies = [5, 4, 3, 2, 1]
         receiver.handle("test", replies.pop)
         receiver.consume_in_thread(1)
 
@@ -406,4 +407,3 @@ class RabbitDashiConnectionTests(DashiConnectionTests):
         receiver.wait(pred=pred)
 
         self.assertEqual(len(receiver.received), 100)
-

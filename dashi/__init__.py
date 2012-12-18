@@ -38,7 +38,7 @@ class DashiConnection(object):
         @param transport_options: custom parameter dict for the transport backend
         """
 
-        self._conn = BrokerConnection(uri, transport_options=transport_options,ssl=ssl)
+        self._conn = BrokerConnection(uri, transport_options=transport_options, ssl=ssl)
         self._name = name
         self._exchange_name = exchange
         self._exchange = Exchange(name=exchange, type='direct',
@@ -76,7 +76,7 @@ class DashiConnection(object):
             args = kwargs
 
         d = dict(op=operation, args=args)
-        headers = {'sender' : self.name}
+        headers = {'sender': self.name}
 
         with producers[self._conn].acquire(block=True) as producer:
             maybe_declare(self._exchange, producer.channel)
@@ -99,7 +99,6 @@ class DashiConnection(object):
                 raise TypeError("specify args dict or keyword arguments, not both")
         else:
             args = kwargs
-
 
         # create a direct exchange and queue for the reply. This may end up
         # being a bottleneck for performance: each rpc call gets a brand new
@@ -128,7 +127,7 @@ class DashiConnection(object):
             consumer.declare()
 
             d = dict(op=operation, args=args)
-            headers = {'reply-to' : msg_id, 'sender' : self.name}
+            headers = {'reply-to': msg_id, 'sender': self.name}
 
             with producers[self._conn].acquire(block=True) as producer:
                 maybe_declare(self._exchange, producer.channel)
@@ -202,7 +201,9 @@ class DashiConnection(object):
 
         self._linked_exceptions[custom_exception] = dashi_exception
 
+
 _OpSpec = namedtuple('_OpSpec', ['function', 'sender_kwarg'])
+
 
 class DashiConsumer(object):
     def __init__(self, dashi, connection, name, exchange):
@@ -219,6 +220,7 @@ class DashiConsumer(object):
         self.connect()
 
     def connect(self):
+
         self._channel = self._conn.channel()
 
         self._queue = Queue(channel=self._channel, name=self._name,
@@ -281,7 +283,6 @@ class DashiConsumer(object):
 
                     if elapsed + inner_timeout > timeout:
                         inner_timeout = timeout - elapsed
-
 
     def cancel(self, block=True):
         self._cancelled = True
@@ -360,7 +361,7 @@ class DashiConsumer(object):
     def add_op(self, name, fun, sender_kwarg=None):
         if not callable(fun):
             raise ValueError("operation function must be callable")
-        
+
         self._ops[name] = _OpSpec(fun, sender_kwarg)
 
 
