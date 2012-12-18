@@ -8,6 +8,7 @@ import time
 
 from nose.plugins.skip import SkipTest
 from kombu.pools import connections
+import kombu.pools
 
 import dashi
 import dashi.util
@@ -17,6 +18,35 @@ log = logging.getLogger(__name__)
 
 _NO_EXCEPTION = object()
 _NO_REPLY = object()
+
+
+def assert_kombu_pools_empty():
+
+    # hacky. peek into kombu internals to ensure pools
+    # have no dirty resources.
+
+    for pool in kombu.pools._all_pools():
+        if pool._dirty:
+
+            "Pool %s has %d items" % (pool, len(pool._dirty))
+
+            msg_parts = ["Pool %s has %d items:" % (pool, len(pool._dirty))]
+            found_stack = False
+            for c in pool._dirty:
+
+                if hasattr(c, 'acquired_by') and c.acquired_by:
+                    found_stack = True
+                    stack = " Acquired by: " + "".join(c.acquired_by[-1])
+                else:
+                    stack = ""
+
+                msg_parts.append("%s%s" % (c, stack))
+
+            if not found_stack:
+                msg_parts.append("\nPROTIP: export KOMBU_DEBUG_POOL and " +
+                    "connection holder callstacks will be included in this error")
+
+            raise Exception("\n".join(msg_parts))
 
 
 class TestReceiver(object):
@@ -101,6 +131,9 @@ class TestReceiver(object):
     def cancel(self):
         self.conn.cancel()
 
+    def disconnect(self):
+        self.conn.disconnect()
+
 
 class DashiConnectionTests(unittest.TestCase):
 
@@ -142,6 +175,9 @@ class DashiConnectionTests(unittest.TestCase):
         self.assertEqual(opname, "test2")
         self.assertEqual(gotargs, args3)
 
+        receiver.disconnect()
+        assert_kombu_pools_empty()
+
     def test_call(self):
         receiver = TestReceiver(uri=self.uri, exchange="x1",
             transport_options=self.transport_options)
@@ -164,6 +200,9 @@ class DashiConnectionTests(unittest.TestCase):
             self.assertEqual(ret, i)
 
         receiver.join_consumer_thread()
+        receiver.disconnect()
+
+        assert_kombu_pools_empty()
 
     def test_call_unknown_op(self):
         receiver = TestReceiver(uri=self.uri, exchange="x1",
@@ -182,6 +221,9 @@ class DashiConnectionTests(unittest.TestCase):
             self.fail("Expected UnknownOperationError")
         finally:
             receiver.join_consumer_thread()
+
+        receiver.disconnect()
+        assert_kombu_pools_empty()
 
     def test_call_handler_error(self):
         def raise_hell():
@@ -204,6 +246,9 @@ class DashiConnectionTests(unittest.TestCase):
             self.fail("Expected DashiError")
         finally:
             receiver.join_consumer_thread()
+
+        receiver.disconnect()
+        assert_kombu_pools_empty()
 
     def test_fire_many_receivers(self):
         extras = {}
@@ -233,6 +278,10 @@ class DashiConnectionTests(unittest.TestCase):
             self.assertEqual(opname, "test")
             self.assertEqual(args['n'], i)
 
+        for receiver in receivers:
+            receiver.disconnect()
+        assert_kombu_pools_empty()
+
     def test_cancel(self):
 
         receiver = TestReceiver(uri=self.uri, exchange="x1",
@@ -244,6 +293,9 @@ class DashiConnectionTests(unittest.TestCase):
 
         # this should hang forever if cancel doesn't work
         receiver.join_consumer_thread()
+
+        receiver.disconnect()
+        assert_kombu_pools_empty()
 
     def test_cancel_resume_cancel(self):
         receiver = TestReceiver(uri=self.uri, exchange="x1",
@@ -270,6 +322,9 @@ class DashiConnectionTests(unittest.TestCase):
 
         receiver.cancel()
         receiver.join_consumer_thread()
+
+        receiver.disconnect()
+        assert_kombu_pools_empty()
 
     def test_handle_sender_kwarg(self):
         receiver = TestReceiver(uri=self.uri, exchange="x1",
@@ -310,6 +365,9 @@ class DashiConnectionTests(unittest.TestCase):
         receiver.cancel()
         receiver.join_consumer_thread()
 
+        receiver.disconnect()
+        assert_kombu_pools_empty()
+
     def test_exceptions(self):
         class CustomNotFoundError(Exception):
             pass
@@ -332,6 +390,9 @@ class DashiConnectionTests(unittest.TestCase):
             self.fail("Expected NotFoundError")
         finally:
             receiver.join_consumer_thread()
+
+        receiver.disconnect()
+        assert_kombu_pools_empty()
 
 
 class RabbitDashiConnectionTests(DashiConnectionTests):
@@ -367,6 +428,9 @@ class RabbitDashiConnectionTests(DashiConnectionTests):
             with kombuconn.channel() as channel:
                 log.debug("got channel ID %s", channel.channel_id)
                 self.assertEqual(channel_id, channel.channel_id)
+
+        receiver.disconnect()
+        assert_kombu_pools_empty()
 
     def _thread_erroneous_replies(self, dashiconn, count):
         log.debug("sending erroneous replies")
