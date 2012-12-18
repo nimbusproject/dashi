@@ -28,8 +28,6 @@ def assert_kombu_pools_empty():
     for pool in kombu.pools._all_pools():
         if pool._dirty:
 
-            "Pool %s has %d items" % (pool, len(pool._dirty))
-
             msg_parts = ["Pool %s has %d items:" % (pool, len(pool._dirty))]
             found_stack = False
             for c in pool._dirty:
