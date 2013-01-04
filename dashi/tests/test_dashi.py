@@ -6,12 +6,14 @@ import uuid
 import logging
 import time
 
+from mock import Mock
 from nose.plugins.skip import SkipTest
 from kombu.pools import connections
 import kombu.pools
 
 import dashi
 import dashi.util
+from dashi.exceptions import DashiError
 from dashi.tests.util import who_is_calling
 
 log = logging.getLogger(__name__)
@@ -365,6 +367,32 @@ class DashiConnectionTests(unittest.TestCase):
 
         receiver.disconnect()
         assert_kombu_pools_empty()
+
+    def test_heartbeats(self):
+
+        receiver = TestReceiver(uri=self.uri, exchange="x1",
+            transport_options=self.transport_options)
+        receiver.conn.consumer_timeout = 100
+
+        receiver.handle("test1", "hello", sender_kwarg="sender")
+
+        caught_exp = None
+        try:
+            receiver.consume(1)
+        except DashiError, e:
+            caught_exp = e
+        assert caught_exp
+
+        receiver.conn.consumer_timeout = 1
+        receiver.consume(1)
+
+        receiver.clear()
+
+        receiver.cancel()
+
+        receiver.disconnect()
+        assert_kombu_pools_empty()
+
 
     def test_exceptions(self):
         class CustomNotFoundError(Exception):

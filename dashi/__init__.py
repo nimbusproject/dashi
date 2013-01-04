@@ -6,7 +6,8 @@ import uuid
 import sys
 import logging
 
-from kombu.connection import BrokerConnection
+from datetime import datetime, timedelta
+from kombu.connection import Connection
 from kombu.messaging import Consumer
 from kombu.pools import connections, producers
 from kombu.entity import Queue, Exchange
@@ -16,6 +17,7 @@ from exceptions import DashiError, BadRequestError, NotFoundError, UnknownOperat
 
 log = logging.getLogger(__name__)
 
+DEFAULT_HEARTBEAT = 30
 
 class DashiConnection(object):
 
@@ -24,7 +26,8 @@ class DashiConnection(object):
     #TODO support connection info instead of uri
 
     def __init__(self, name, uri, exchange, durable=False, auto_delete=True,
-                 serializer=None, transport_options=None, ssl=False):
+                 serializer=None, transport_options=None, ssl=False, 
+                 heartbeat=DEFAULT_HEARTBEAT):
         """Set up a Dashi connection
 
         @param name: name of destination service queue used by consumers
@@ -38,7 +41,9 @@ class DashiConnection(object):
         @param transport_options: custom parameter dict for the transport backend
         """
 
-        self._conn = BrokerConnection(uri, transport_options=transport_options, ssl=ssl)
+        self._heartbeat_interval = heartbeat
+        self._conn = Connection(uri, transport_options=transport_options,
+                ssl=ssl, heartbeat=self._heartbeat_interval)
         self._name = name
         self._exchange_name = exchange
         self._exchange = Exchange(name=exchange, type='direct',
@@ -216,6 +221,7 @@ class DashiConsumer(object):
         self._ops = {}
         self._cancelled = False
         self._consumer_lock = threading.Lock()
+        self._last_heartbeat_check = datetime.min
 
         self.connect()
 
@@ -272,6 +278,9 @@ class DashiConsumer(object):
 
         # keep trying until a single event is drained or timeout hit
         while not self._cancelled:
+
+            self.heartbeat()
+
             try:
                 self._conn.drain_events(timeout=inner_timeout)
                 break
@@ -284,6 +293,20 @@ class DashiConsumer(object):
 
                     if elapsed + inner_timeout > timeout:
                         inner_timeout = timeout - elapsed
+
+    def heartbeat(self):
+        time_between_tics = timedelta(seconds=self._dashi._heartbeat_interval / 2)
+
+        if self._dashi.consumer_timeout > time_between_tics.seconds:
+            msg = "dashi consumer timeout (%s) must be half or smaller than the heartbeat interval %s" % (
+                    self._dashi.consumer_timeout, self._dashi._heartbeat_interval)
+
+            raise DashiError(msg)
+
+        if datetime.now() - self._last_heartbeat_check > time_between_tics:
+            self._last_heartbeat_check = datetime.now()
+            self._conn.heartbeat_check()
+
 
     def cancel(self, block=True):
         self._cancelled = True
