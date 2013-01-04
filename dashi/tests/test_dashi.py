@@ -1,3 +1,4 @@
+import socket
 import unittest
 import threading
 from functools import partial
@@ -383,8 +384,13 @@ class DashiConnectionTests(unittest.TestCase):
             caught_exp = e
         assert caught_exp
 
-        receiver.conn.consumer_timeout = 1
-        receiver.consume(1)
+        receiver.conn.consumer_timeout = 0.1
+        caught_timeout = None
+        try:
+            receiver.consume(1)
+        except socket.timeout, e:
+            caught_timeout = e
+        assert caught_timeout
 
         receiver.clear()
 
