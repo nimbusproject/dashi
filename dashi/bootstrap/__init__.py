@@ -62,7 +62,7 @@ def configure(config_files=DEFAULT_CONFIG_FILES,
     return CFG
 
 
-def dashi_connect(topic, CFG=None, amqp_uri=None):
+def dashi_connect(topic, CFG=None, amqp_uri=None, sysname=None):
 
     if not CFG and not amqp_uri:
         #TODO: Some other kind of exception?
@@ -107,8 +107,16 @@ def dashi_connect(topic, CFG=None, amqp_uri=None):
     except AttributeError:
         ssl = False
 
+    try:
+        _sysname = CFG.dashi.sysname
+    except AttributeError:
+        _sysname = sysname
+
+    print "PDA: sysname -> %s" % _sysname
+
     return DashiConnection(topic, amqp_uri, dashi_exchange,
-            serializer=serializer, transport_options=transport_options, ssl=ssl)
+            serializer=serializer, transport_options=transport_options, ssl=ssl,
+            sysname=_sysname)
 
 
 def enable_gevent():

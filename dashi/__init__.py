@@ -27,7 +27,7 @@ class DashiConnection(object):
 
     def __init__(self, name, uri, exchange, durable=False, auto_delete=True,
                  serializer=None, transport_options=None, ssl=False, 
-                 heartbeat=DEFAULT_HEARTBEAT):
+                 heartbeat=DEFAULT_HEARTBEAT, sysname=None):
         """Set up a Dashi connection
 
         @param name: name of destination service queue used by consumers
@@ -39,14 +39,20 @@ class DashiConnection(object):
         will be deleted when all consumers are gone
         @param serializer: specify a serializer for message encoding
         @param transport_options: custom parameter dict for the transport backend
+        @param heartbeat: amqp heartbeat interval
+        @param sysname: a prefix for exchanges and queues for namespacing
         """
 
         self._heartbeat_interval = heartbeat
         self._conn = Connection(uri, transport_options=transport_options,
                 ssl=ssl, heartbeat=self._heartbeat_interval)
         self._name = name
-        self._exchange_name = exchange
-        self._exchange = Exchange(name=exchange, type='direct',
+        self._sysname = sysname
+        if self._sysname is not None:
+            self._exchange_name = "%s.%s" % (self._sysname, exchange)
+        else:
+            self._exchange_name = exchange
+        self._exchange = Exchange(name=self._exchange_name, type='direct',
                                   durable=durable, auto_delete=auto_delete)
 
         # visible attributes
@@ -59,6 +65,10 @@ class DashiConnection(object):
         self._linked_exceptions = {}
 
         self._serializer = serializer
+
+    @property
+    def sysname(self):
+        return self._sysname
 
     @property
     def name(self):
@@ -168,7 +178,7 @@ class DashiConnection(object):
         if not self._consumer:
             self._consumer_conn = connections[self._conn].acquire()
             self._consumer = DashiConsumer(self, self._consumer_conn,
-                    self._name, self._exchange)
+                    self._name, self._exchange, sysname=self._sysname)
         self._consumer.add_op(operation_name or operation.__name__, operation,
                               sender_kwarg=sender_kwarg)
 
@@ -211,11 +221,12 @@ _OpSpec = namedtuple('_OpSpec', ['function', 'sender_kwarg'])
 
 
 class DashiConsumer(object):
-    def __init__(self, dashi, connection, name, exchange):
+    def __init__(self, dashi, connection, name, exchange, sysname=None):
         self._dashi = dashi
         self._conn = connection
         self._name = name
         self._exchange = exchange
+        self._sysname = sysname
 
         self._channel = None
         self._ops = {}
@@ -229,8 +240,12 @@ class DashiConsumer(object):
 
         self._channel = self._conn.channel()
 
-        self._queue = Queue(channel=self._channel, name=self._name,
-                exchange=self._exchange, routing_key=self._name,
+        if self._sysname is not None:
+            name = "%s.%s" % (self._sysname, self._name)
+        else:
+            name = self._name
+        self._queue = Queue(channel=self._channel, name=name,
+                exchange=self._exchange, routing_key=name,
                 durable=self._dashi.durable,
                 auto_delete=self._dashi.auto_delete)
         self._queue.declare()

@@ -205,6 +205,37 @@ class DashiConnectionTests(unittest.TestCase):
 
         assert_kombu_pools_empty()
 
+    def test_sysname(self):
+
+        sysname = "sysname"
+
+        receiver = TestReceiver(uri=self.uri, exchange="x1", sysname=sysname,
+            transport_options=self.transport_options)
+        replies = [5, 4, 3, 2, 1]
+        receiver.handle("test", replies.pop)
+        receiver.consume_in_thread(1)
+
+        conn = dashi.DashiConnection("s1", self.uri, "x1", sysname=sysname,
+            transport_options=self.transport_options)
+        args1 = dict(a=1, b="sandwich")
+
+        ret = conn.call(receiver.name, "test", **args1)
+        self.assertEqual(ret, 1)
+        receiver.join_consumer_thread()
+
+        receiver.consume_in_thread(4)
+
+        for i in list(reversed(replies)):
+            ret = conn.call(receiver.name, "test", **args1)
+            self.assertEqual(ret, i)
+
+        time.sleep(10)
+
+        receiver.join_consumer_thread()
+        receiver.disconnect()
+
+        assert_kombu_pools_empty()
+
     def test_call_unknown_op(self):
         receiver = TestReceiver(uri=self.uri, exchange="x1",
             transport_options=self.transport_options)
