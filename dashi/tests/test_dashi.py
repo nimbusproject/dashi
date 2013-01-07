@@ -372,7 +372,7 @@ class DashiConnectionTests(unittest.TestCase):
     def test_heartbeats(self):
 
         receiver = TestReceiver(uri=self.uri, exchange="x1",
-            transport_options=self.transport_options)
+            transport_options=self.transport_options, heartbeat=30)
         receiver.conn.consumer_timeout = 100
 
         receiver.handle("test1", "hello", sender_kwarg="sender")

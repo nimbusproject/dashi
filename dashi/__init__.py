@@ -17,7 +17,7 @@ from exceptions import DashiError, BadRequestError, NotFoundError, UnknownOperat
 
 log = logging.getLogger(__name__)
 
-DEFAULT_HEARTBEAT = 30
+DEFAULT_HEARTBEAT = None  # Disabled for now
 
 class DashiConnection(object):
 
@@ -295,6 +295,9 @@ class DashiConsumer(object):
                         inner_timeout = timeout - elapsed
 
     def heartbeat(self):
+        if self._dashi._heartbeat_interval is None:
+            return
+
         time_between_tics = timedelta(seconds=self._dashi._heartbeat_interval / 2)
 
         if self._dashi.consumer_timeout > time_between_tics.seconds:
