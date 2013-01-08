@@ -74,6 +74,12 @@ class DashiConnection(object):
     def name(self):
         return self._name
 
+    def add_sysname(self, name):
+        if self.sysname is not None:
+            return "%s.%s" % (self.sysname, name)
+        else:
+            return name
+
     def fire(self, name, operation, args=None, **kwargs):
         """Send a message without waiting for a reply
 
@@ -91,11 +97,11 @@ class DashiConnection(object):
             args = kwargs
 
         d = dict(op=operation, args=args)
-        headers = {'sender': self.name}
+        headers = {'sender': self.add_sysname(self.name)}
 
         with producers[self._conn].acquire(block=True) as producer:
             maybe_declare(self._exchange, producer.channel)
-            producer.publish(d, routing_key=name, exchange=self._exchange_name,
+            producer.publish(d, routing_key=self.add_sysname(name), exchange=self._exchange_name,
                              headers=headers, serializer=self._serializer)
 
     def call(self, name, operation, timeout=5, args=None, **kwargs):
@@ -142,12 +148,12 @@ class DashiConnection(object):
             consumer.declare()
 
             d = dict(op=operation, args=args)
-            headers = {'reply-to': msg_id, 'sender': self.name}
+            headers = {'reply-to': msg_id, 'sender': self.add_sysname(self.name)}
 
             with producers[self._conn].acquire(block=True) as producer:
                 maybe_declare(self._exchange, producer.channel)
-                log.debug("sending call to %s:%s", name, operation)
-                producer.publish(d, routing_key=name, headers=headers,
+                log.debug("sending call to %s:%s", self.add_sysname(name), operation)
+                producer.publish(d, routing_key=self.add_sysname(name), headers=headers,
                                  exchange=self._exchange, serializer=self._serializer)
 
             with consumer:
