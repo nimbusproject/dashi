@@ -3,7 +3,7 @@
 import os
 import codecs
 
-VERSION = "0.2.4"
+VERSION = "0.2.5"
 
 if os.path.exists("README.rst"):
     long_description = codecs.open('README.rst', "r", "utf-8").read()
@@ -33,7 +33,7 @@ setupdict = {
     "download_url" : "http://www.nimbusproject.org/downloads/dashi-%s.tar.gz" % VERSION,
 }
 
-install_requires = ['kombu>=2.5', 'pyyaml']
+install_requires = ['kombu>=2.1.2,<2.5.0', 'pyyaml']
 tests_require = ["nose", "mock"]
 
 from setuptools import setup, find_packages
