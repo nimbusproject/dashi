@@ -241,6 +241,7 @@ class DashiConsumer(object):
 
     def disconnect(self):
         self._consumer.cancel()
+        self._channel.close()
         self._conn.release()
 
     def consume(self, count=None, timeout=None):
