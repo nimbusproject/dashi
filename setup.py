@@ -3,7 +3,7 @@
 import os
 import codecs
 
-VERSION = "0.2.5"
+VERSION = "0.2.6"
 
 if os.path.exists("README.rst"):
     long_description = codecs.open('README.rst', "r", "utf-8").read()
