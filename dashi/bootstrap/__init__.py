@@ -110,9 +110,11 @@ def dashi_connect(topic, CFG=None, amqp_uri=None, sysname=None):
     try:
         _sysname = CFG.dashi.sysname
     except AttributeError:
-        _sysname = sysname
+        _sysname = None
 
-    print "PDA: sysname -> %s" % _sysname
+    # argument overrides config value
+    if sysname is not None:
+        _sysname = sysname
 
     return DashiConnection(topic, amqp_uri, dashi_exchange,
             serializer=serializer, transport_options=transport_options, ssl=ssl,
