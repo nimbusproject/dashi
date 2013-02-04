@@ -2,8 +2,9 @@
 
 import os
 import codecs
+from dashi import __version__
 
-VERSION = "0.2.7"
+VERSION = __version__
 
 if os.path.exists("README.rst"):
     long_description = codecs.open('README.rst', "r", "utf-8").read()
