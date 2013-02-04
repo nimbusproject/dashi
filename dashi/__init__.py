@@ -15,6 +15,8 @@ from kombu.common import maybe_declare
 
 from exceptions import DashiError, BadRequestError, NotFoundError, UnknownOperationError, WriteConflictError
 
+__version__ = '0.2.7'
+
 log = logging.getLogger(__name__)
 
 DEFAULT_HEARTBEAT = None  # Disabled for now
