@@ -6,8 +6,8 @@ import itertools
 import uuid
 import logging
 import time
+import sys
 
-from mock import Mock
 from nose.plugins.skip import SkipTest
 from kombu.pools import connections
 import kombu.pools
@@ -15,12 +15,14 @@ import kombu.pools
 import dashi
 import dashi.util
 from dashi.exceptions import DashiError
-from dashi.tests.util import who_is_calling
+from dashi.tests.util import who_is_calling, SocatProxy
 
 log = logging.getLogger(__name__)
 
 _NO_EXCEPTION = object()
 _NO_REPLY = object()
+
+retry = dashi.util.RetryBackoff(max_attempts=10, backoff_max=3.0)
 
 
 def assert_kombu_pools_empty():
@@ -52,7 +54,7 @@ def assert_kombu_pools_empty():
 
 class TestReceiver(object):
 
-    consume_timeout = 5
+    consume_timeout = 30
 
     def __init__(self, **kwargs):
 
@@ -80,6 +82,7 @@ class TestReceiver(object):
         self.conn.handle(partial(self._handler, opname), opname, **kwargs)
 
     def _handler(self, opname, **kwargs):
+        log.debug("TestReceiver(%s) got op=%s: %s", self.name, opname, kwargs)
         with self.condition:
             self.received.append((opname, kwargs))
             self.condition.notifyAll()
@@ -106,7 +109,7 @@ class TestReceiver(object):
                 self.condition.wait(remaining)
                 now = time.time()
                 if now - start >= timeout and not pred(self.received):
-                    raise Exception("timed out waiting for messages")
+                    raise Exception("timed out waiting for messages. had: %s", self.received)
                 remaining -= now - start
 
     def consume(self, count):
@@ -228,8 +231,6 @@ class DashiConnectionTests(unittest.TestCase):
         for i in list(reversed(replies)):
             ret = conn.call(receiver.name, "test", **args1)
             self.assertEqual(ret, i)
-
-        time.sleep(10)
 
         receiver.join_consumer_thread()
         receiver.disconnect()
@@ -400,37 +401,6 @@ class DashiConnectionTests(unittest.TestCase):
         receiver.disconnect()
         assert_kombu_pools_empty()
 
-    def test_heartbeats(self):
-
-        receiver = TestReceiver(uri=self.uri, exchange="x1",
-            transport_options=self.transport_options, heartbeat=30)
-        receiver.conn.consumer_timeout = 100
-
-        receiver.handle("test1", "hello", sender_kwarg="sender")
-
-        caught_exp = None
-        try:
-            receiver.consume(1)
-        except DashiError, e:
-            caught_exp = e
-        assert caught_exp
-
-        receiver.conn.consumer_timeout = 0.1
-        caught_timeout = None
-        try:
-            receiver.consume(1)
-        except socket.timeout, e:
-            caught_timeout = e
-        assert caught_timeout
-
-        receiver.clear()
-
-        receiver.cancel()
-
-        receiver.disconnect()
-        assert_kombu_pools_empty()
-
-
     def test_exceptions(self):
         class CustomNotFoundError(Exception):
             pass
@@ -446,7 +416,7 @@ class DashiConnectionTests(unittest.TestCase):
         args1 = dict(a=1, b="sandwich")
 
         try:
-            ret = conn.call(receiver.name, "test_exception", **args1)
+            conn.call(receiver.name, "test_exception", **args1)
         except dashi.exceptions.NotFoundError:
             pass
         else:
@@ -504,7 +474,7 @@ class RabbitDashiConnectionTests(DashiConnectionTests):
                 log.exception("Got expected exception replying to a nonexistent exchange")
 
     def test_pool_problems(self):
-        raise SkipTest("failing test that exposes problem in dashi RPC strategy")
+        # raise SkipTest("failing test that exposes problem in dashi RPC strategy")
 
         # this test fails (I think) because replies are sent to a nonexistent
         # exchange. Rabbit freaks out about this and poisons the channel.
@@ -534,3 +504,195 @@ class RabbitDashiConnectionTests(DashiConnectionTests):
         receiver.wait(pred=pred)
 
         self.assertEqual(len(receiver.received), 100)
+
+
+class RabbitProxyDashiConnectionTests(RabbitDashiConnectionTests):
+    """Test rabbitmq dashi through a TCP proxy that we can kill to simulate failures
+
+    Run all the above rabbit tests too, to make sure proxy behaves ok
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.proxy = SocatProxy("localhost:5672")
+        cls.proxy.start()
+        cls.uri = "amqp://guest:guest@localhost:%s" % cls.proxy.port
+        cls.real_uri = "amqp://guest:guest@localhost:%s" % 5672
+
+    @classmethod
+    def tearDownClass(cls):
+        if cls.proxy:
+            cls.proxy.stop()
+
+    def setUp(self):
+        if not self.proxy.running:
+            self.proxy.start()
+
+    def _make_chained_proxy(self, proxy):
+        second_proxy = SocatProxy(proxy.address, destination_options="ignoreeof")
+        self.addCleanup(second_proxy.stop)
+        second_proxy.start()
+
+        uri = "amqp://guest:guest@localhost:%s" % second_proxy.port
+        return second_proxy, uri
+
+    def test_call_kill_pool_connection(self):
+        # use a pool connection, kill the connection, and then try to reuse it
+
+        # put receiver directly on rabbit. not via proxy
+        receiver = TestReceiver(uri=self.real_uri, exchange="x1",
+            transport_options=self.transport_options, retry=retry)
+        replies = [5, 4, 3, 2, 1]
+        receiver.handle("test", replies.pop)
+        receiver.consume_in_thread()
+
+        conn = dashi.DashiConnection("s1", self.uri, "x1",
+            transport_options=self.transport_options, retry=retry)
+
+        ret = conn.call(receiver.name, "test")
+        self.assertEqual(ret, 1)
+
+        for i in list(reversed(replies)):
+            self.proxy.restart()
+            ret = conn.call(receiver.name, "test")
+            self.assertEqual(ret, i)
+
+        receiver.cancel()
+        receiver.join_consumer_thread()
+        receiver.disconnect()
+
+        assert_kombu_pools_empty()
+
+    def test_call_kill_before_reply(self):
+
+        # have the receiver handler restart the sender's connection
+        # while it is waiting for a reply
+
+        def killit():
+            self.proxy.restart()
+            return True
+
+        # put receiver directly on rabbit. not via proxy
+        receiver = TestReceiver(uri=self.real_uri, exchange="x1",
+            transport_options=self.transport_options, retry=retry)
+        receiver.handle("killme", killit)
+        receiver.consume_in_thread()
+
+        for _ in range(5):
+            conn = dashi.DashiConnection("s1", self.uri, "x1",
+                transport_options=self.transport_options, retry=retry)
+            ret = conn.call(receiver.name, "killme")
+            self.assertEqual(ret, True)
+
+        receiver.cancel()
+        receiver.join_consumer_thread()
+        receiver.disconnect()
+
+        assert_kombu_pools_empty()
+
+    def test_fire_kill_pool_connection(self):
+        # use a pool connection, kill the connection, and then try to reuse it
+
+        # put receiver directly on rabbit. not via proxy
+        receiver = TestReceiver(uri=self.real_uri, exchange="x1",
+            transport_options=self.transport_options, retry=retry)
+        receiver.handle("test")
+        receiver.consume_in_thread()
+
+        conn = dashi.DashiConnection("s1", self.uri, "x1",
+            transport_options=self.transport_options, retry=retry)
+
+        conn.fire(receiver.name, "test", hats=0)
+        receiver.wait(pred=lambda r: len(r) == 1)
+        self.assertEqual(receiver.received[0], ("test", {"hats": 0}))
+
+        for i in range(1, 4):
+            self.proxy.restart()
+            conn.fire(receiver.name, "test", hats=i)
+
+        receiver.wait(pred=lambda r: len(r) == 4)
+        self.assertEqual(receiver.received[1], ("test", {"hats": 1}))
+        self.assertEqual(receiver.received[2], ("test", {"hats": 2}))
+        self.assertEqual(receiver.received[3], ("test", {"hats": 3}))
+
+        receiver.cancel()
+        receiver.join_consumer_thread()
+        receiver.disconnect()
+
+        assert_kombu_pools_empty()
+
+    def test_receiver_kill_connection(self):
+        # restart a consumer's connection. it should reconnect and keep consuming
+        receiver = TestReceiver(uri=self.uri, exchange="x1",
+            transport_options=self.transport_options, retry=retry)
+        receiver.handle("test", "hats")
+        receiver.consume_in_thread()
+
+        # put caller directly on rabbit, not proxy
+        conn = dashi.DashiConnection("s1", self.real_uri, "x1",
+            transport_options=self.transport_options, retry=retry)
+        self.assertEqual(conn.call(receiver.name, "test"), "hats")
+
+        self.proxy.restart()
+
+        self.assertEqual(conn.call(receiver.name, "test"), "hats")
+        self.assertEqual(conn.call(receiver.name, "test"), "hats")
+
+        receiver.cancel()
+        receiver.join_consumer_thread()
+        receiver.disconnect()
+
+        assert_kombu_pools_empty()
+
+    def test_heartbeat_kill(self):
+        # create a second tier proxy. then we can kill the backend proxy
+        # and our connection remains "open"
+        chained_proxy, chained_uri = self._make_chained_proxy(self.proxy)
+
+        event = threading.Event()
+
+        # attach an errback to the receiver that is called by dashi
+        # with any connection failures
+        def errback():
+            log.debug("Errback called", exc_info=True)
+            exc = sys.exc_info()[1]
+            if "Too many heartbeats missed" in str(exc):
+                log.debug("we got the beat!")
+                event.set()
+
+        receiver = TestReceiver(uri=chained_uri, exchange="x1",
+            transport_options=self.transport_options, heartbeat=2.0,
+            errback=errback, retry=retry)
+        receiver.handle("test", "hats")
+        receiver.consume_in_thread()
+
+        # put caller directly on rabbit, not proxy
+        conn = dashi.DashiConnection("s1", self.real_uri, "x1",
+            transport_options=self.transport_options, retry=retry)
+        self.assertEqual(conn.call(receiver.name, "test"), "hats")
+
+        # kill the proxy and wait for the errback from amqp client
+        self.proxy.stop()
+
+        # try a few times to get the heartbeat loss error. depending on
+        # timing, sometimes we just get a connectionloss error
+        for _ in range(4):
+            event.wait(5)
+            if event.is_set():
+                break
+            else:
+                self.proxy.start()
+                time.sleep(3)  # give it time to reconnect
+                self.proxy.stop()
+        assert event.is_set()
+
+        # restart and we should be back up and running
+        self.proxy.start()
+        self.assertEqual(conn.call(receiver.name, "test"), "hats")
+
+        receiver.cancel()
+        receiver.join_consumer_thread()
+        receiver.disconnect()
+
+        assert_kombu_pools_empty()
+

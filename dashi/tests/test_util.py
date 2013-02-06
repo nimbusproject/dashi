@@ -60,7 +60,7 @@ class LoopingCallTests(unittest.TestCase):
         with self.condition:
             if not self.calls:
                 self.condition.wait(5)
-                
+
         self.assertEqual(self.calls, 1)
         self.assertLastPassed(1, hats=True)
 
@@ -99,14 +99,13 @@ class LoopingCallTests(unittest.TestCase):
 
         with self.condition:
             while not self.calls >= 3:
-                
+
                 self.condition.wait()
 
         self.loop.stop()
         self.assertGreaterEqual(self.calls, 3)
 
 
-        
 
 
 
