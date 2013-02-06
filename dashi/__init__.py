@@ -8,18 +8,19 @@ import logging
 
 from datetime import datetime, timedelta
 from kombu.connection import Connection
-from kombu.messaging import Consumer
-from kombu.pools import connections, producers
+from kombu.messaging import Consumer, Producer
+from kombu.pools import connections
 from kombu.entity import Queue, Exchange
-from kombu.common import maybe_declare
 
-from exceptions import DashiError, BadRequestError, NotFoundError, UnknownOperationError, WriteConflictError
+from exceptions import DashiError, BadRequestError, NotFoundError, \
+    UnknownOperationError, WriteConflictError
 
 __version__ = '0.2.7'
 
 log = logging.getLogger(__name__)
 
 DEFAULT_HEARTBEAT = None  # Disabled for now
+
 
 class DashiConnection(object):
 
@@ -28,7 +29,7 @@ class DashiConnection(object):
     #TODO support connection info instead of uri
 
     def __init__(self, name, uri, exchange, durable=False, auto_delete=True,
-                 serializer=None, transport_options=None, ssl=False, 
+                 serializer=None, transport_options=None, ssl=False,
                  heartbeat=DEFAULT_HEARTBEAT, sysname=None):
         """Set up a Dashi connection
 
@@ -48,6 +49,14 @@ class DashiConnection(object):
         self._heartbeat_interval = heartbeat
         self._conn = Connection(uri, transport_options=transport_options,
                 ssl=ssl, heartbeat=self._heartbeat_interval)
+        if heartbeat:
+            # create a connection template for pooled connections. These cannot
+            # have heartbeat enabled.
+            self._pool_conn = Connection(uri, transport_options=transport_options,
+                    ssl=ssl)
+        else:
+            self._pool_conn = self._conn
+
         self._name = name
         self._sysname = sysname
         if self._sysname is not None:
@@ -101,10 +110,13 @@ class DashiConnection(object):
         d = dict(op=operation, args=args)
         headers = {'sender': self.add_sysname(self.name)}
 
-        with producers[self._conn].acquire(block=True) as producer:
-            maybe_declare(self._exchange, producer.channel)
-            producer.publish(d, routing_key=self.add_sysname(name), exchange=self._exchange_name,
-                             headers=headers, serializer=self._serializer)
+        with connections[self._pool_conn].acquire(block=True) as conn:
+            conn.ensure_connection()
+            producer = Producer(conn)
+            producer.publish(d, routing_key=self.add_sysname(name),
+                             headers=headers, serializer=self._serializer,
+                             retry=True, exchange=self._exchange,
+                             declare=[self._exchange])
 
     def call(self, name, operation, timeout=5, args=None, **kwargs):
         """Send a message and wait for reply
@@ -135,7 +147,8 @@ class DashiConnection(object):
                             durable=False, auto_delete=True)
 
         # check out a connection from the pool
-        with connections[self._conn].acquire(block=True) as conn:
+        with connections[self._pool_conn].acquire(block=True) as conn:
+            conn.ensure_connection()
             queue = Queue(name=msg_id, exchange=exchange, routing_key=msg_id,
                           exclusive=True, durable=False, auto_delete=True)
             log.debug("declared call() reply queue %s", msg_id)
@@ -152,11 +165,11 @@ class DashiConnection(object):
             d = dict(op=operation, args=args)
             headers = {'reply-to': msg_id, 'sender': self.add_sysname(self.name)}
 
-            with producers[self._conn].acquire(block=True) as producer:
-                maybe_declare(self._exchange, producer.channel)
-                log.debug("sending call to %s:%s", self.add_sysname(name), operation)
-                producer.publish(d, routing_key=self.add_sysname(name), headers=headers,
-                                 exchange=self._exchange, serializer=self._serializer)
+            producer = Producer(conn)
+            log.debug("sending call to %s:%s", self.add_sysname(name), operation)
+            producer.publish(d, routing_key=self.add_sysname(name), headers=headers,
+                exchange=self._exchange, serializer=self._serializer, retry=True,
+                declare=[self._exchange])
 
             with consumer:
                 log.debug("awaiting call reply on %s", msg_id)
@@ -169,12 +182,16 @@ class DashiConnection(object):
             else:
                 return msg_body.get('result')
 
-    def reply(self, msg_id, body):
-        with producers[self._conn].acquire(block=True) as producer:
-            try:
-                producer.publish(body, routing_key=msg_id, exchange=msg_id, serializer=self._serializer)
-            except self._conn.channel_errors:
-                log.exception("Failed to reply to msg %s", msg_id)
+    def reply(self, connection, msg_id, body):
+        exchange = Exchange(name=msg_id, type='direct',
+                            durable=False, auto_delete=True)
+        producer = Producer(connection)
+        log.debug("sending reply to %s", msg_id)
+        try:
+            producer.publish(body, routing_key=msg_id, exchange=exchange,
+                serializer=self._serializer, retry=True, declare=[exchange])
+        except connection.channel_errors:
+            log.exception("Failed to reply to msg %s", msg_id)
 
     def handle(self, operation, operation_name=None, sender_kwarg=None):
         """Handle an operation using the specified function
@@ -184,8 +201,7 @@ class DashiConnection(object):
         @param sender_kwarg: optional keyword arg on operation to feed in sender name
         """
         if not self._consumer:
-            self._consumer_conn = connections[self._conn].acquire()
-            self._consumer = DashiConsumer(self, self._consumer_conn,
+            self._consumer = DashiConsumer(self, self._conn,
                     self._name, self._exchange, sysname=self._sysname)
         self._consumer.add_op(operation_name or operation.__name__, operation,
                               sender_kwarg=sender_kwarg)
@@ -334,7 +350,6 @@ class DashiConsumer(object):
             self._last_heartbeat_check = datetime.now()
             self._conn.heartbeat_check()
 
-
     def cancel(self, block=True):
         self._cancelled = True
         if block:
@@ -405,7 +420,7 @@ class DashiConsumer(object):
                                traceback=tb)
 
                 reply = dict(result=ret, error=err)
-                self._dashi.reply(reply_to, reply)
+                self._dashi.reply(self._conn, reply_to, reply)
 
             message.ack()
 
