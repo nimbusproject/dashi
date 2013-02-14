@@ -111,7 +111,7 @@ class DashiConnection(object):
         headers = {'sender': self.add_sysname(self.name)}
 
         with connections[self._pool_conn].acquire(block=True) as conn:
-            conn.ensure_connection()
+            conn.ensure_connection(errback=_errback)
             producer = Producer(conn)
             producer.publish(d, routing_key=self.add_sysname(name),
                              headers=headers, serializer=self._serializer,
@@ -148,7 +148,7 @@ class DashiConnection(object):
 
         # check out a connection from the pool
         with connections[self._pool_conn].acquire(block=True) as conn:
-            conn.ensure_connection()
+            conn.ensure_connection(errback=_errback)
             queue = Queue(name=msg_id, exchange=exchange, routing_key=msg_id,
                           exclusive=True, durable=False, auto_delete=True)
             log.debug("declared call() reply queue %s", msg_id)
@@ -159,22 +159,26 @@ class DashiConnection(object):
                 messages.append(body)
                 message.ack()
 
-            consumer = Consumer(conn, queues=(queue,), callbacks=(_callback,))
-            consumer.declare()
-
             d = dict(op=operation, args=args)
             headers = {'reply-to': msg_id, 'sender': self.add_sysname(self.name)}
 
-            producer = Producer(conn)
-            log.debug("sending call to %s:%s", self.add_sysname(name), operation)
-            producer.publish(d, routing_key=self.add_sysname(name), headers=headers,
-                exchange=self._exchange, serializer=self._serializer, retry=True,
-                declare=[self._exchange])
+            @conn.autoretry
+            def _declare_and_send(channel):
+                consumer = Consumer(channel, queues=(queue,), callbacks=(_callback,))
+                producer = Producer(channel)
+                log.debug("sending call to %s:%s", self.add_sysname(name), operation)
+                producer.publish(d, routing_key=self.add_sysname(name), headers=headers,
+                    exchange=self._exchange, serializer=self._serializer, retry=True,
+                    declare=[self._exchange])
+                return consumer
 
+            consumer, channel = _declare_and_send()
             with consumer:
                 log.debug("awaiting call reply on %s", msg_id)
                 # only expecting one event
+
                 conn.drain_events(timeout=timeout)
+            channel.close()
 
             msg_body = messages[0]
             if msg_body.get('error'):
@@ -429,6 +433,10 @@ class DashiConsumer(object):
             raise ValueError("operation function must be callable")
 
         self._ops[name] = _OpSpec(fun, sender_kwarg)
+
+
+def _errback(exc, interval):
+    log.warn("Connection cannot be established: %s", exc)
 
 
 def raise_error(error):

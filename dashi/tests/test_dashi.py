@@ -15,7 +15,7 @@ import kombu.pools
 import dashi
 import dashi.util
 from dashi.exceptions import DashiError
-from dashi.tests.util import who_is_calling
+from dashi.tests.util import who_is_calling, SocatProxy
 
 log = logging.getLogger(__name__)
 
@@ -430,7 +430,6 @@ class DashiConnectionTests(unittest.TestCase):
         receiver.disconnect()
         assert_kombu_pools_empty()
 
-
     def test_exceptions(self):
         class CustomNotFoundError(Exception):
             pass
@@ -534,3 +533,73 @@ class RabbitDashiConnectionTests(DashiConnectionTests):
         receiver.wait(pred=pred)
 
         self.assertEqual(len(receiver.received), 100)
+
+
+class RabbitProxyDashiConnectionTests(RabbitDashiConnectionTests):
+    """Test rabbitmq dashi through a TCP proxy that we can kill to simulate failures
+
+    Run all the above rabbit tests too, to make sure proxy behaves ok
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.proxy = SocatProxy("localhost:5672")
+        cls.proxy.start()
+        cls.uri = "amqp://guest:guest@localhost:%s" % cls.proxy.port
+        cls.real_uri = "amqp://guest:guest@localhost:%s" % 5672
+
+    @classmethod
+    def tearDownClass(cls):
+        if cls.proxy:
+            cls.proxy.stop()
+
+    def setUp(self):
+        if not self.proxy.running:
+            self.proxy.start()
+
+    def test_call_kill_pool_connection(self):
+        # use a pool connection, kill the connection, and then try to reuse it
+
+        # put receiver directly on rabbit. not via proxy
+        receiver = TestReceiver(uri=self.real_uri, exchange="x1",
+            transport_options=self.transport_options)
+        replies = [5, 4, 3, 2, 1]
+        receiver.handle("test", replies.pop)
+        receiver.consume_in_thread()
+
+        conn = dashi.DashiConnection("s1", self.uri, "x1",
+            transport_options=self.transport_options)
+
+        ret = conn.call(receiver.name, "test")
+        self.assertEqual(ret, 1)
+
+        for i in list(reversed(replies)):
+            self.proxy.restart()
+            ret = conn.call(receiver.name, "test")
+            self.assertEqual(ret, i)
+
+        receiver.cancel()
+        receiver.join_consumer_thread()
+        receiver.disconnect()
+
+        assert_kombu_pools_empty()
+
+    def test_call_kill_before_reply(self):
+
+        # have the receiver handler restart the sender's connection
+        # while it is waiting for a reply
+
+        def killit():
+            self.proxy.restart()
+            return True
+
+        # put receiver directly on rabbit. not via proxy
+        receiver = TestReceiver(uri=self.real_uri, exchange="x1",
+            transport_options=self.transport_options)
+        receiver.handle("killme", killit)
+        receiver.consume_in_thread()
+
+        conn = dashi.DashiConnection("s1", self.uri, "x1",
+            transport_options=self.transport_options)
+        ret = conn.call(receiver.name, "killme")
+        self.assertEqual(ret, True)
