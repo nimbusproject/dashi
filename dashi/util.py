@@ -30,6 +30,11 @@ class Countdown(object):
         """
         return max(0.0, self.expires - self._time_func())
 
+    @property
+    def delta_seconds(self):
+        """difference in seconds. can be negative"""
+        return self.expires - self._time_func()
+
 
 class RetryBackoff(object):
     def __init__(self, max_attempts=0, backoff_start=0.5, backoff_step=0.5, backoff_max=30, timeout=None):

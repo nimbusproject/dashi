@@ -1,4 +1,3 @@
-import socket
 import unittest
 import threading
 from functools import partial
@@ -8,13 +7,11 @@ import logging
 import time
 import sys
 
-from nose.plugins.skip import SkipTest
 from kombu.pools import connections
 import kombu.pools
 
 import dashi
 import dashi.util
-from dashi.exceptions import DashiError
 from dashi.tests.util import who_is_calling, SocatProxy
 
 log = logging.getLogger(__name__)
@@ -427,6 +424,16 @@ class DashiConnectionTests(unittest.TestCase):
         receiver.disconnect()
         assert_kombu_pools_empty()
 
+    def test_call_timeout(self):
+        conn = dashi.DashiConnection("s1", self.uri, "x1",
+            transport_options=self.transport_options)
+
+        countdown = dashi.util.Countdown(0.6)
+        # call with no receiver should timeout
+        self.assertRaises(conn.timeout_error, conn.call, "notarealname", "test", timeout=0.5)
+        delta = countdown.delta_seconds
+        assert 0 < delta < 1, "delta: %s" % delta
+
 
 class RabbitDashiConnectionTests(DashiConnectionTests):
     """The base dashi tests run on rabbit, plus some extras which are
@@ -474,12 +481,6 @@ class RabbitDashiConnectionTests(DashiConnectionTests):
                 log.exception("Got expected exception replying to a nonexistent exchange")
 
     def test_pool_problems(self):
-        # raise SkipTest("failing test that exposes problem in dashi RPC strategy")
-
-        # this test fails (I think) because replies are sent to a nonexistent
-        # exchange. Rabbit freaks out about this and poisons the channel.
-        # Eventually the sender thread comes across the poisoned channel and
-        # its send fails. How to fix??
 
         receiver = TestReceiver(uri=self.uri, exchange="x1",
             transport_options=self.transport_options)
@@ -504,6 +505,10 @@ class RabbitDashiConnectionTests(DashiConnectionTests):
         receiver.wait(pred=pred)
 
         self.assertEqual(len(receiver.received), 100)
+
+        receiver.cancel()
+        receiver.join_consumer_thread()
+        receiver.disconnect()
 
 
 class RabbitProxyDashiConnectionTests(RabbitDashiConnectionTests):
@@ -622,9 +627,13 @@ class RabbitProxyDashiConnectionTests(RabbitDashiConnectionTests):
         assert_kombu_pools_empty()
 
     def test_receiver_kill_connection(self):
+        def errback():
+            log.debug("Errback called", exc_info=True)
+
         # restart a consumer's connection. it should reconnect and keep consuming
         receiver = TestReceiver(uri=self.uri, exchange="x1",
-            transport_options=self.transport_options, retry=retry)
+            transport_options=self.transport_options, retry=retry,
+            errback=errback)
         receiver.handle("test", "hats")
         receiver.consume_in_thread()
 
@@ -682,7 +691,7 @@ class RabbitProxyDashiConnectionTests(RabbitDashiConnectionTests):
                 break
             else:
                 self.proxy.start()
-                time.sleep(3)  # give it time to reconnect
+                time.sleep(2)  # give it time to reconnect
                 self.proxy.stop()
         assert event.is_set()
 
@@ -696,3 +705,26 @@ class RabbitProxyDashiConnectionTests(RabbitDashiConnectionTests):
 
         assert_kombu_pools_empty()
 
+    def test_call_timeout_during_recovery(self):
+        conn = dashi.DashiConnection("s1", self.uri, "x1",
+            transport_options=self.transport_options)
+
+        got_timeout = threading.Event()
+
+        def doit():
+            self.assertRaises(conn.timeout_error, conn.call, "notarealname", "test", timeout=3)
+            got_timeout.set()
+
+        countdown = dashi.util.Countdown(4)
+
+        t = threading.Thread(target=doit)
+        t.daemon = True
+        t.start()
+        time.sleep(0.5)
+
+        try:
+            got_timeout.wait(5)
+        finally:
+            t.join()
+        delta = countdown.delta_seconds
+        assert 0 < delta < 1, "delta: %s" % delta

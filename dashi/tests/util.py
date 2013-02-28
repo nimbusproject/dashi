@@ -5,6 +5,9 @@ import os
 import unittest
 import signal
 import socket
+import logging
+
+log = logging.getLogger(__name__)
 
 
 def who_is_calling():
@@ -32,6 +35,7 @@ class SocatProxy(object):
         assert not self.process
         src_arg = "TCP4-LISTEN:%d,fork,reuseaddr%s" % (self.port, self.source_options)
         dest_arg = "TCP4:%s%s" % (self.destination, self.destination_options)
+        log.debug("Starting socat TCP proxy %s -> %s", self.port, self.address)
         try:
             self.process = subprocess.Popen(args=["socat", src_arg, dest_arg],
                 preexec_fn=os.setpgrp)
@@ -41,6 +45,7 @@ class SocatProxy(object):
 
     def stop(self):
         if self.process and self.process.returncode is None:
+            log.debug("Stopping socat TCP proxy %s -> %s", self.port, self.address)
             try:
                 os.killpg(self.process.pid, signal.SIGKILL)
             except OSError, e:
