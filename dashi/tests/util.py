@@ -7,6 +7,11 @@ import signal
 import socket
 import logging
 
+from kombu.messaging import Queue
+from kombu.pools import connections
+
+from dashi.exceptions import NotFoundError
+
 log = logging.getLogger(__name__)
 
 
@@ -76,3 +81,20 @@ def free_port(host="localhost"):
         return sock.getsockname()[1]
     finally:
         sock.close()
+
+
+def get_queue_info(connection, queue):
+    """Returns queue name, message count, consumer count
+    """
+    with connections[connection._pool_conn].acquire(block=True) as conn:
+        q = Queue(queue.name, channel=conn, exchange=queue.exchange,
+            durable=queue.durable, auto_delete=queue.auto_delete)
+        # doesn't actually declare queue, just checks if it exists
+        try:
+            return q.queue_declare(passive=True)
+        except Exception as e:
+            # better way to check this?
+            if "NOT_FOUND" in str(e):
+                raise NotFoundError()
+            raise
+

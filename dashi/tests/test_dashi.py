@@ -9,10 +9,12 @@ import sys
 
 from kombu.pools import connections
 import kombu.pools
+from mock import patch
 
 import dashi
 import dashi.util
-from dashi.tests.util import who_is_calling, SocatProxy
+from dashi.tests.util import who_is_calling, SocatProxy, get_queue_info
+from dashi.exceptions import NotFoundError
 
 log = logging.getLogger(__name__)
 
@@ -51,7 +53,7 @@ def assert_kombu_pools_empty():
 
 class TestReceiver(object):
 
-    consume_timeout = 30
+    consume_timeout = 300
 
     def __init__(self, **kwargs):
 
@@ -134,6 +136,10 @@ class TestReceiver(object):
 
     def disconnect(self):
         self.conn.disconnect()
+
+    @property
+    def queue(self):
+        return self.conn._consumer._queue
 
 
 class DashiConnectionTests(unittest.TestCase):
@@ -434,6 +440,36 @@ class DashiConnectionTests(unittest.TestCase):
         delta = countdown.delta_seconds
         assert 0 < delta < 1, "delta: %s" % delta
 
+    def test_call_queue_deleted(self):
+        receiver = TestReceiver(uri=self.uri, exchange="x1",
+            transport_options=self.transport_options)
+        receiver.handle("test", "hats")
+        receiver.consume_in_thread(1)
+
+        conn = dashi.DashiConnection("s1", self.uri, "x1",
+            transport_options=self.transport_options)
+        args1 = dict(a=1, b="sandwich")
+
+        rpc_consumers = []
+
+        # patch in this fake consumer so we can save a copy
+        class _Consumer(dashi.Consumer):
+            def __init__(self, *args, **kwargs):
+                super(_Consumer, self).__init__(*args, **kwargs)
+                rpc_consumers.append(self)
+
+        with patch.object(dashi, "Consumer", new=_Consumer):
+            self.assertEqual(conn.call(receiver.name, "test", **args1), "hats")
+
+        self.assertEqual(len(rpc_consumers), 1)
+        self.assertEqual(len(rpc_consumers[0].queues), 1)
+        queue = rpc_consumers[0].queues[0]
+
+        self.assertRaises(NotFoundError, get_queue_info, conn, queue)
+
+        receiver.join_consumer_thread()
+        assert_kombu_pools_empty()
+
 
 class RabbitDashiConnectionTests(DashiConnectionTests):
     """The base dashi tests run on rabbit, plus some extras which are
@@ -644,7 +680,9 @@ class RabbitProxyDashiConnectionTests(RabbitDashiConnectionTests):
 
         self.proxy.restart()
 
-        self.assertEqual(conn.call(receiver.name, "test"), "hats")
+        log.debug("Queue consumer count: %s", get_queue_info(conn, receiver.queue)[2])
+
+        self.assertEqual(conn.call(receiver.name, "test", timeout=60), "hats")
         self.assertEqual(conn.call(receiver.name, "test"), "hats")
 
         receiver.cancel()

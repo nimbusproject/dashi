@@ -3,6 +3,7 @@ import unittest
 
 from dashi.util import LoopingCall
 
+
 class LoopingCallTests(unittest.TestCase):
 
     def setUp(self):

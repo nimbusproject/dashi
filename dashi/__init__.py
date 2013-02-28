@@ -168,7 +168,6 @@ class Dashi(object):
         def _callback(body, message):
             messages.append(body)
             message.ack()
-            log.debug("setting event")
             event.set()
 
         d = dict(op=operation, args=args)
@@ -187,8 +186,15 @@ class Dashi(object):
             consumer, channel = self.ensure(conn, _declare_and_send)
             try:
                 self._consume(conn, consumer, timeout=timeout, until_event=event)
+
+                # try to delete queue, but don't worry if it fails (will expire)
+                try:
+                    queue = queue.bind(channel)
+                    queue.delete(nowait=True)
+                except Exception:
+                    log.exception("error deleting queue")
+
             finally:
-                pass
                 conn.maybe_close_channel(channel)
 
         msg_body = messages[0]
