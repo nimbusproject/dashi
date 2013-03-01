@@ -466,6 +466,7 @@ class DashiConsumer(object):
         reply_to = None
         ret = None
         err = None
+        err_dict = None
         try:
             reply_to = message.headers.get('reply-to')
 
@@ -493,41 +494,54 @@ class DashiConsumer(object):
                 log.exception("Type error with handler for %s:%s", self._name, op)
                 raise BadRequestError("Type error: %s" % str(e))
             except Exception:
-                log.exception("Error in handler for %s:%s", self._name, op)
                 raise
 
         except Exception:
             err = sys.exc_info()
         finally:
+            if err:
+                err_dict, is_known_error = self._wrap_error(err)
+                if is_known_error:
+                    exc_type = err_dict['exc_type']
+                    if exc_type and exc_type.startswith(ERROR_PREFIX):
+                        exc_type = exc_type[len(ERROR_PREFIX):]
+                    log.info("Known '%s' error in handler %s:%s: %s", exc_type,
+                        self._name, op, err_dict['value'])
+                else:
+                    log.error("Unknown '%s' error in handler %s:%s: %s",
+                        err_dict['exc_type'], self._name, op,
+                        err_dict['value'], exc_info=err)
+
             if reply_to:
-                if err:
-                    tb = "".join(traceback.format_exception(*err))
-
-                    # some error types are specific to dashi (not underlying
-                    # service code). These get raised with the same type on
-                    # the client side. Identify them by prefixing the package
-                    # name on the exc_type.
-
-                    exc_type = err[0]
-
-                    # Check if there is a dashi exception linked to this custom exception
-                    linked_exception = self._dashi._linked_exceptions.get(exc_type)
-                    if linked_exception:
-                        exc_type = linked_exception
-
-                    known_type = ERROR_TYPE_MAP.get(exc_type.__name__)
-                    if known_type and exc_type is known_type:
-                        exc_type_name = ERROR_PREFIX + exc_type.__name__
-                    else:
-                        exc_type_name = exc_type.__name__
-
-                    err = dict(exc_type=exc_type_name, value=str(err[1]),
-                               traceback=tb)
-
-                reply = dict(result=ret, error=err)
+                reply = dict(result=ret, error=err_dict)
                 self._dashi.reply(self._conn, reply_to, reply)
 
             message.ack()
+
+    def _wrap_error(self, exc_info):
+        tb = "".join(traceback.format_exception(*exc_info))
+
+        # some error types are specific to dashi (not underlying
+        # service code). These get raised with the same type on
+        # the client side. Identify them by prefixing the package
+        # name on the exc_type.
+
+        exc_type = exc_info[0]
+
+        # Check if there is a dashi exception linked to this custom exception
+        linked_exception = self._dashi._linked_exceptions.get(exc_type)
+        if linked_exception:
+            exc_type = linked_exception
+
+        known_type = ERROR_TYPE_MAP.get(exc_type.__name__)
+        is_known = known_type and exc_type is known_type
+        if is_known:
+            exc_type_name = ERROR_PREFIX + exc_type.__name__
+        else:
+            exc_type_name = exc_type.__name__
+
+        return dict(exc_type=exc_type_name, value=str(exc_info[1]),
+                   traceback=tb), is_known
 
     def add_op(self, name, fun, sender_kwarg=None):
         if not callable(fun):
