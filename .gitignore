@@ -6,3 +6,4 @@
 *.pid
 build
 dist
+.coverage
