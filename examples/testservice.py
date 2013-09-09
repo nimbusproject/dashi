@@ -1,4 +1,7 @@
+#!/usr/bin/env python
+
 from dashi.bootstrap import Service
+
 
 class TestService(Service):
 

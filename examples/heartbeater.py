@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 from itertools import count
 
 import gevent
@@ -8,6 +10,7 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 
 from dashi import DashiConnection
+
 
 class HeartbeatService(object):
 
@@ -44,4 +47,3 @@ class HeartbeatService(object):
 
 if __name__ == '__main__':
     HeartbeatService().start()
-

@@ -1,9 +1,12 @@
+#!/usr/bin/env python
+
 import socket
 import sys
 from threading import Thread
 from dashi import DashiConnection
 
 g_rabbit_url = ""
+
 
 class TalkConsole(object):
 
@@ -18,6 +21,7 @@ class TalkConsole(object):
     def input(self):
         line = raw_input(self._prompt)
         return line.strip()
+
 
 class DashiTalker(Thread):
 
@@ -64,6 +68,7 @@ class DashiTalker(Thread):
         self.done = True
         self.input_message("%s has left the room" % (self.name))
 
+
 def main(argv):
     global g_rabbit_url
     g_rabbit_url = argv[0]
@@ -72,7 +77,7 @@ def main(argv):
     talker = DashiTalker(console, my_name)
     if len(argv) > 2:
         print "request"
-        print  argv[2]
+        print argv[2]
         talker.request_conversation(argv[2])
 
     talker.start()

@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import uuid
 
 import logging
@@ -32,4 +34,3 @@ class HeartbeatSubscriber(object):
 
 if __name__ == '__main__':
     HeartbeatSubscriber().start()
-
