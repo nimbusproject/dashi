@@ -10,5 +10,5 @@ Parts of dashi are inspired by the `nova.rpc`_ package of `Openstack Nova`_.
 
 
 .. _`Kombu`: http://ask.github.com/kombu
-.. _`nova.rpc`: https://github.com/openstack/nova/tree/master/nova/rpc
+.. _`nova.rpc`: http://docs.openstack.org/developer/nova/devref/rpc.html
 .. _`Openstack Nova`: http://nova.openstack.org
