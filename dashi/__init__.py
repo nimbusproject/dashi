@@ -277,7 +277,7 @@ class Dashi(object):
         """Handle an operation using the specified function
 
         @param operation: function to call for this operation
-        @param operation_name: operation name. if unspecifed operation.__name__ is used
+        @param operation_name: operation name. if unspecified operation.__name__ is used
         @param sender_kwarg: optional keyword arg on operation to feed in sender name
         """
         if not self._consumer:
@@ -379,7 +379,7 @@ class Dashi(object):
     def ensure(self, connection, func, *args, **kwargs):
         """Perform an operation until success
 
-        Repeats in the face of connection errors, persuant to retry policy
+        Repeats in the face of connection errors, pursuant to retry policy.
         """
         channel = None
         while 1:
