@@ -1,7 +1,7 @@
 import threading
 import unittest
 
-from dashi.util import LoopingCall
+from dashi.util import LoopingCall, RetryBackoff
 
 
 class LoopingCallTests(unittest.TestCase):
@@ -107,6 +107,43 @@ class LoopingCallTests(unittest.TestCase):
         self.assertGreaterEqual(self.calls, 3)
 
 
+class TestRetryBackoff(unittest.TestCase):
 
+    def test_max_attempts(self):
+        backoff = RetryBackoff(max_attempts=5)
+        self.assertEqual(list(backoff), [0.5, 1.0, 1.5, 2.0, 2.5])
 
+    def test_max_attempts_float(self):
+        backoff = RetryBackoff(max_attempts=5.6)
+        self.assertEqual(list(backoff), [0.5, 1.0, 1.5, 2.0, 2.5])
 
+    def test_backoff_start(self):
+        backoff = RetryBackoff(max_attempts=5, backoff_start=1.0)
+        self.assertEqual(list(backoff), [1.0, 1.5, 2.0, 2.5, 3.0])
+
+    def test_backoff_start_int(self):
+        backoff = RetryBackoff(max_attempts=5, backoff_start=1)
+        self.assertEqual(list(backoff), [1.0, 1.5, 2.0, 2.5, 3.0])
+
+    def test_backoff_step(self):
+        backoff = RetryBackoff(max_attempts=5, backoff_step=1.0)
+        self.assertEqual(list(backoff), [0.5, 1.5, 2.5, 3.5, 4.5])
+
+    def test_backoff_step_int(self):
+        backoff = RetryBackoff(max_attempts=5, backoff_step=1)
+        self.assertEqual(list(backoff), [0.5, 1.5, 2.5, 3.5, 4.5])
+
+    def test_backoff_max(self):
+        backoff = RetryBackoff(max_attempts=5, backoff_max=1.5)
+        self.assertEqual(list(backoff), [0.5, 1.0, 1.5, 1.5, 1.5])
+
+    def test_backoff_max_int(self):
+        backoff = RetryBackoff(max_attempts=5, backoff_max=1)
+        self.assertEqual(list(backoff), [0.5, 1.0, 1.0, 1.0, 1.0])
+
+    def test_timeout(self):
+        backoff = RetryBackoff(max_attempts=5, timeout=1)
+        result = list(backoff)
+        expected = [1.0, 1.5, 2.0, 2.5, 3.0]
+        for x, y in zip(result, expected):
+            self.assertAlmostEqual(x, y, places=4)
